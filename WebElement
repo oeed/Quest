@@ -36,6 +36,7 @@
 			end
 		end
 		self.Width = 1
+		self.Height = 1
 	end
 
 	Initialise = function(self, element, parentElement, webView)
