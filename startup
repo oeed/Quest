@@ -1,220 +1,488 @@
-tArgs = {...}
-
-os.loadAPI('/System/API/Drawing', true)
-os.loadAPI('/System/API/Button', true)
-os.loadAPI('/System/API/Helpers', true)
-os.loadAPI('/System/API/Menu', true)
-os.loadAPI('/System/API/Peripheral', true)
-os.loadAPI('/System/API/TextDialogueWindow', true)
-os.loadAPI('/System/API/ButtonDialogueWindow', true)
-os.loadAPI('HTML')
-os.loadAPI('WebView')
-
-
-Current = {
-	Clicks = {},
-}
-
-Events = {
-	
-}
-
-InterfaceElements = {
-	
-}
-
-function Initialise()
-	EventRegister('mouse_click', TryClick)
-	EventRegister('mouse_drag', TryClick)
-	EventRegister('monitor_touch', TryClick)
-	EventRegister('mouse_scroll', Scroll)
-	EventRegister('key', HandleKey)
-	EventRegister('char', HandleKey)
-	EventRegister('timer', Update)
-
-	OneOS.ToolBarColour = colours.lightGrey
-	OneOS.ToolBarTextColour = colours.white
-
-	--Update()
-	sleep(0)
-	local h = fs.open(runningLocation .. 'test.html', 'r')
-	--print(textutils.serialize(HTML.parsestr(h.readAll())))
-	sleep(0)
-	--h.close()
-
-	webView = WebView:Initialise(1, 1, 51, 19, HTML.parsestr(h.readAll()), nil)
-	webView:BuildPage()
-	h.close()
-
-	print(type(tonumber('100%')))
-	EventHandler()
-end
-
-function Update()
-	Draw()
-	updateTimer = os.startTimer(1)
-end
-
-function Draw()
-	Current.Clicks = {}
-	Drawing.DrawBlankArea(1, 1, Drawing.Screen.Width, 3, colours.lightGrey)
-	Drawing.DrawBlankArea(1, 4, Drawing.Screen.Width, Drawing.Screen.Height-3, colours.white)
-
-	for i, elem in ipairs(InterfaceElements) do
-		if elem.Draw then
-			elem:Draw()
-		end
-	end
-
-	Drawing.DrawBuffer()
-end
-
-MainDraw = Draw
-function RegisterElement(elem)
-	table.insert(InterfaceElements, elem)
-end
-
-function UnregisterElement(elem)
-	for i, e in ipairs(InterfaceElements) do
-		if elem == e then
-			InterfaceElements[i] = nil
-		end
-	end
-end
-
-function RegisterClick(elem)
-	table.insert(Current.Clicks, elem)
-end
-
-function CheckClick(object, x, y)
-	local pos = GetAbsolutePosition(object)
-	if pos.X <= x and pos.Y <= y and  pos.X + object.Width > x and pos.Y + object.Height > y then
-		return true
-	end
-end
-
-function DoClick(event, object, side, x, y)
-	if object and CheckClick(object, x, y) then
-		return object:Click(side, x - object.X + 1, y - object.Y + 1)
-	end	
-end
-
-function TryClick(event, side, x, y)
-	if Current.Menu and DoClick(event, Current.Menu, side, x, y) then
-		Draw()
-		return
-	elseif Current.Window then
-		if DoClick(event, Current.Window, side, x, y) then
-			Draw()
-			return
+-- TODO: have a much simpler API loader... not a 70+ line one
+local Extension = function(path, addDot)
+	if not path then
+		return nil
+	elseif not string.find(fs.getName(path), '%.') then
+		if not addDot then
+			return fs.getName(path)
 		else
-			Current.Window:Flash()
+			return ''
 		end
 	else
-		if Current.Menu then
-			Current.Menu:Close()
-			Draw()
+		local _path = path
+		if path:sub(#path) == '/' then
+			_path = path:sub(1,#path-1)
 		end
-
-		for i, object in ipairs(Current.Clicks) do
-			if DoClick(event, object, side, x, y) then
-				Draw()
-				return
-			end		
+		local extension = _path:gmatch('%.[0-9a-z]+$')()
+		if extension then
+			extension = extension:sub(2)
+		else
+			--extension = nil
+			return ''
 		end
-
-		if 1 <= x and 5 <= y and  Current.SidebarWidth + 1 > x then
-			SidebarClick(x, y - 4, side)
-		elseif 5 <= y then
-			FilesClick(event, x - Current.SidebarWidth, y - 4, side)
+		if addDot then
+			extension = '.'..extension
 		end
+		return extension:lower()
 	end
 end
 
-function HandleKey(...)
-	local args = {...}
-	local event = args[1]
-	local keychar = args[2]
-	if Current.Window then
-		if event == 'key' then
-			if keychar == keys.enter then
-				if Current.Window.OkButton then
-					Current.Window.OkButton:Click(1,1,1)
-					Draw()
-				end
-			elseif keychar == keys.delete or keychar == keys.backspace then
-				if Current.Window.CancelButton then
-					Current.Window.CancelButton:Click(1,1,1)
-					Draw()
-				end
-			end
-		end
-	elseif Current.SelectedFile then
-		if event == 'key' then
-			if keychar == keys.enter then
-				local file = nil
-				for i, f in ipairs(Current.FileList) do
-					if f.name == Current.SelectedFile then
-						file = f
-					end
-				end
-				if file then
-					OpenFile(file)
-				end
-			elseif keychar == keys.delete or keychar == keys.backspace then
-				local file = nil
-				for i, f in ipairs(Current.FileList) do
-					if f.name == Current.SelectedFile then
-						file = f
-					end
-				end
-				if file then
-					ButtonDialogueWindow:Initialise("Delete '"..Helpers.TruncateString(Helpers.RemoveExtension(file.name), 16).."'?", "Are you sure you want to delete '"..file.name.."'?", 'Yes', 'Cancel', function(success)
-						if success then
-							fs.delete(file.path)
-						end
-					end):Show()
-					Draw()
-				end
-			end
-		end
+local RemoveExtension = function(path)
+	if path:sub(1,1) == '.' then
+		return path
 	end
-
-	if keychar == keys.up then
-		Scroll('mouse_scroll', -1)
-	elseif keychar == keys.down then
-		Scroll('mouse_scroll', 1)
+	local extension = Extension(path)
+	if extension == path then
+		return fs.getName(path)
 	end
+	return string.gsub(path, extension, ''):sub(1, -2)
 end
 
-function GetAbsolutePosition(obj)
-	if not obj.Parent then
-		return {X = obj.X, Y = obj.Y}
+local tAPIsLoading = {}
+function LoadAPI(_sPath)
+	local sName = RemoveExtension(fs.getName( _sPath ))
+	if tAPIsLoading[sName] == true then
+	end
+	tAPIsLoading[sName] = true
+		
+	local tEnv = {isStartup = true }
+	setmetatable( tEnv, { __index = getfenv()} )
+	local fnAPI, err = loadfile( _sPath )
+	if fnAPI then
+		setfenv( fnAPI, tEnv )
+		fnAPI()
 	else
-		local pos = GetAbsolutePosition(obj.Parent)
-		local x = pos.X + obj.X - 1
-		local y = pos.Y + obj.Y - 1
-		return {X = x, Y = y}
+		printError( err )
+		log('Error: '..err)
+        tAPIsLoading[sName] = nil
+		return false
+	end
+	
+	local tAPI = {}
+	for k,v in pairs( tEnv ) do
+		tAPI[k] =  v
+	end
+	
+	_G[sName] = tAPI
+end
+
+_G.Errors = {
+	Unknown = 1,
+	InvalidDoctype = 2,
+	ParseFailed = 3,
+	NotFound = 404,
+	TimeoutStop = 408,
+}
+
+local bedrockPath='/' if OneOS then OneOS.LoadAPI('/System/API/Bedrock.lua', false)elseif fs.exists(bedrockPath..'/Bedrock')then os.loadAPI(bedrockPath..'/Bedrock')else if http then print('Downloading Bedrock...')local h=http.get('http://pastebin.com/raw.php?i=0MgKNqpN')if h then local f=fs.open(bedrockPath..'/Bedrock','w')f.write(h.readAll())f.close()h.close()os.loadAPI(bedrockPath..'/Bedrock')else error('Failed to download Bedrock. Is your internet working?') end else error('This program needs to download Bedrock to work. Please enable HTTP.') end end if Bedrock then Bedrock.BasePath = bedrockPath Bedrock.ProgramPath = shell.getRunningProgram() end
+
+os.loadAPI('parser')
+os.loadAPI('lQuery')
+LoadAPI('Elements/Element.lua')
+LoadAPI('Elements/Script.lua')
+LoadAPI('Elements/Center.lua')
+LoadAPI('Elements/Link.lua')
+LoadAPI('Elements/Image.lua')
+LoadAPI('Elements/Divider.lua')
+LoadAPI('Elements/Heading.lua')
+LoadAPI('Elements/Paragraph.lua')
+LoadAPI('Elements/Float.lua')
+LoadAPI('Elements/TextInput.lua')
+LoadAPI('Elements/SecureTextInput.lua')
+LoadAPI('Elements/Select.lua')
+LoadAPI('Elements/Form.lua')
+LoadAPI('Elements/SelectOption.lua')
+LoadAPI('Elements/ButtonInput.lua')
+LoadAPI('Elements/ElementTree.lua')
+
+Divider.__index = Element
+setmetatable(Divider, Divider)
+Heading.__index = Element
+setmetatable(Heading, Heading)
+
+local program = Bedrock:Initialise()
+
+local httpQueue = {}
+
+program:RegisterEvent('http_success', function(self, event, url, response)
+	for i, request in ipairs(httpQueue) do
+		if request[1] == url then
+			request[2](true, url, response)
+			table.remove(httpQueue, i)
+			break
+		end
+	end
+end)
+
+program:RegisterEvent('http_failure', function(self, event, url)
+	for i, request in ipairs(httpQueue) do
+		if request[1] == url then
+			request[2](false, Errors.Unknown)
+			table.remove(httpQueue, i)
+			break
+		end
+	end
+end)
+
+function cancelHTTPAsync(url)
+	for i, request in ipairs(httpQueue) do
+		if request[1] == url then
+			request[2](false, Errors.TimeoutStop)
+			table.remove(httpQueue, i)
+			break
+		end
 	end
 end
 
-function EventRegister(event, func)
-	if not Events[event] then
-		Events[event] = {}
-	end
+local settings = false
 
-	table.insert(Events[event], func)
+function fetchHTTPAsync(_url, callback, post)
+	local components = urlComponents(_url)
+	if components.protocol == 'quest' then
+		local file = fs.open(program.ProgramPath .. '/Pages/' .. components.sansprotocol, 'r')
+		callback(true, _url, file)
+	elseif components.protocol == 'file' then
+		local file = fs.open(components.sansprotocol, 'r')
+		if file then
+			callback(true, url, file)
+		else
+			callback(false)
+		end
+	elseif components.protocol == 'http' then
+		local url = resolveQuestHostUrl(_url)
+		table.insert(httpQueue, {_url, callback})
+
+		if not post then
+			post = 'questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
+		else
+			post = post .. '&questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
+		end
+
+		http.request(url, post, {
+			['User-Agent'] = 'Quest/1.0'
+		})
+	end
 end
 
-function EventHandler()
-	while true do
-		local event = { coroutine.yield() }
-		if Events[event[1]] then
-			for i, e in ipairs(Events[event[1]]) do
-				e(event[1], event[2], event[3], event[4], event[5])
+local questHost = 'http://quest.net76.net/'
+
+function split(str, pat)
+   local t = {}
+   local fpat = "(.-)" .. pat
+   local last_end = 1
+   local s, e, cap = str:find(fpat, 1)
+   while s do
+      if s ~= 1 or cap ~= "" then
+	 table.insert(t,cap)
+      end
+      last_end = e+1
+      s, e, cap = str:find(fpat, last_end)
+   end
+   if last_end <= #str then
+      cap = str:sub(last_end)
+      table.insert(t, cap)
+   end
+   return t
+end
+
+function findLast(haystack, needle)
+    local i=haystack:match(".*"..needle.."()")
+    if i==nil then return nil else return i-1 end
+end
+
+function urlComponents(url)
+	if url then
+		local components = {}
+		local parts = split(url, '[\\/]+')
+		if url:find('://') and parts[1]:sub(#parts[1]) == ':' then
+			components.protocol = parts[1]:sub(1, #parts[1]-1)
+			components.sansprotocol = url:sub(#components.protocol + 4)
+			components.host = parts[2]
+			components.fullhost = components.protocol .. '://' .. parts[2] .. '/'
+			components.filename = fs.getName(url)
+			components.filepath = url:sub(#components.fullhost)
+			if components.filename == components.host then
+				components.filename = ''
+			end
+			components.base = url:sub(1, findLast(url, '/'))
+			return components
+		end
+	end
+end
+
+function resolveQuestHostUrl(url)
+	local components = urlComponents(url)
+	local hostParts = split(components.host, '%.')
+	local tld = hostParts[#hostParts]
+	if tld == 'qst' and #hostParts == 2 then
+		return questHost .. hostParts[1] .. components.filepath
+	end
+	return url
+end
+
+function resolveFullUrl(url)
+	if url and type(url) ~= 'string' then
+	elseif url:find('://') then
+		return url
+	else
+		local components = urlComponents(program:GetObject('WebView').URL)
+		if components then
+			if url:sub(1,1) == '/' then
+				return components.fullhost .. url:sub(2)
+			else
+				return components.base .. url
 			end
 		end
 	end
 end
 
-Initialise()
+function getCurrentUrl()
+	return program:GetObject('WebView').URL
+end
+
+function goToUrl(url, post)
+	program:GetObject('WebView'):GoToURL(url, nil, nil, post)
+end
+
+_G.cancelHTTPAsync = cancelHTTPAsync
+_G.fetchHTTPAsync = fetchHTTPAsync
+_G.resolveFullUrl = resolveFullUrl
+_G.resolveQuestHostUrl = resolveQuestHostUrl
+_G.getCurrentUrl = getCurrentUrl
+_G.goToUrl = goToUrl
+
+local history = {}
+local historyItem = 0
+
+function updateHistoryButtons()
+	if history[historyItem-1] then
+		program:GetObject('BackButton').Enabled = true
+	else
+		program:GetObject('BackButton').Enabled = false
+	end
+
+	if history[historyItem+1] then
+		program:GetObject('ForwardButton').Enabled = true
+	else
+		program:GetObject('ForwardButton').Enabled = false
+	end
+end
+
+function addHistoryURL(url)
+	for i, v in ipairs(history) do
+		if i > historyItem then
+			history[i] = nil
+		end
+	end
+	table.insert(history, url)
+	historyItem = #history
+	updateHistoryButtons()
+end
+
+local defaultSettings = {
+	Home = 'http://quest.net76.net/about.php',
+	ClientIdentifier = nil
+}
+
+local function quit()
+	term.setBackgroundColour(colors.black)
+	shell.run('clear')
+	print('Thanks for using Quest, created by oeed.')
+	program:Quit()
+end
+
+local function goHome()
+	goToUrl(settings.Home)
+end
+
+local function saveSettings()
+	local f = fs.open('.Quest.settings', 'w')
+	if f then
+		f.write(textutils.serialize(settings))
+		f.close()
+	end
+end
+
+local function generateClientIdentifier()
+	program:DisplayWindow({
+		Children = {{
+			X = 2,
+			Y = 2,
+			Type = "Label",
+			Width = "100%,-2",
+			Height = 2,
+			Text = "Registering computer with central server..."
+		}},
+		Width = 28,
+		Height = 4
+	}, "Please Wait", false)
+	program:Draw()
+	local h = http.get('http://quest.net76.net/registerClient.php')
+	program.Window:Close()
+
+		settings.ClientIdentifier = '1245'
+		saveSettings()
+
+	if h then
+		settings.ClientIdentifier = h.readAll()
+		saveSettings()
+		h.close()
+		goHome()
+	else
+		program:DisplayAlertWindow("Register Failed", "Quest couldn't register your computer. There was something wrong with your internet connection. Please quit and try again.", {'Quit'}, function(value)
+			quit()
+		end)
+	end
+
+end
+
+local function loadSettings()
+	if fs.exists('.Quest.settings') then
+		local f = fs.open('.Quest.settings', 'r')
+		if f then
+			settings = textutils.unserialize(f.readAll())
+			if not settings.ClientIdentifier then
+				generateClientIdentifier()
+			end
+			return settings
+		end
+	end
+
+	settings = defaultSettings
+	generateClientIdentifier()
+end
+
+program:Run(function()
+	local timeoutTimer = false
+
+	program:LoadView('main')
+
+	loadSettings()
+
+	program:GetObject('BackButton').OnClick = function(self)
+		if history[historyItem-1] then
+			historyItem = historyItem - 1
+			program:GetObject('WebView'):GoToURL(history[historyItem], nil, true)
+			updateHistoryButtons()
+		end
+	end
+
+	program:GetObject('ForwardButton').OnClick = function(self)
+		if history[historyItem+1] then
+			historyItem = historyItem + 1
+			-- GoToPath(history[historyItem], true)
+			program:GetObject('WebView'):GoToURL(history[historyItem], nil, true)
+			updateHistoryButtons()
+		end
+	end
+
+	program:GetObject('URLTextBox').OnChange = function(self, event, keychar)
+		if keychar == keys.enter then
+			local url = self.Text
+			if not url:find('://') then
+				url = 'http://' .. url 
+				self.Text = url
+			end
+			program:GetObject('WebView'):GoToURL(url)
+		end
+	end
+
+	program:GetObject('OptionsButton').OnClick = function(self, event, side, x, y)
+		if self:ToggleMenu('optionsmenu', x, y) then
+			program:GetObject('StopMenuItem').OnClick = function(self, event, side, x, y)
+				program:GetObject('WebView'):Stop()
+			end
+
+			program:GetObject('ReloadMenuItem').OnClick = function(self, event, side, x, y)
+				program:GetObject('WebView'):GoToURL(program:GetObject('WebView').URL)
+			end
+
+			program:GetObject('GoHomeMenuItem').OnClick = function(self, event, side, x, y)
+				program:GetObject('WebView'):GoToURL('http://quest.net76.net/')
+			end
+
+			program:GetObject('SetHomeMenuItem').OnClick = function(self, event, side, x, y)
+				settings.Home = program:GetObject('WebView').URL
+				saveSettings()
+			end
+
+			program:GetObject('QuitMenuItem').OnClick = function(self, event, side, x, y)
+				quit()
+			end
+		end
+	end
+
+	-- program:GetObject('GoButton').OnClick = function(self, event, side, x, y)
+	-- 	if self.Text == '>' then
+	-- 		local url = program:GetObject('URLTextBox').Text
+	-- 		program:GetObject('WebView'):GoToURL(url)
+	-- 	else
+	-- 		program:GetObject('WebView'):Stop()
+	-- 	end
+	-- end
+
+	program:GetObject('WebView').OnPageLoadStart = function(self, url)
+		program:SetActiveObject()
+		-- program:GetObject('GoButton').Text = 'x'
+		program:GetObject('URLTextBox').Visible = false
+		program:GetObject('LoadingLabel').Visible = true
+		program:GetObject('PageTitleLabel').Text = ''
+
+		
+		timeoutTimer = program:StartTimer(function()
+			program:GetObject('WebView'):Stop()
+		end, 10)
+	end
+
+	program:GetObject('WebView').OnPageLoadEnd = function(self, url, noHistory)
+		-- program:GetObject('GoButton').Text = '>'
+		program:GetObject('URLTextBox').Text = url
+		program:GetObject('URLTextBox').Visible = true
+		program:GetObject('LoadingLabel').Visible = false
+
+		if self.Tree:GetElement('title') then
+			program:GetObject('PageTitleLabel').Text = self.Tree:GetElement('title').Text
+		end
+
+		if not noHistory then
+			addHistoryURL(url)
+		end
+
+		program.Timers[timeoutTimer] = nil
+	end
+
+	program:GetObject('WebView').OnPageLoadFailed = function(self, url, _error, noHistory)
+		-- program:GetObject('GoButton').Text = '>'
+		program:GetObject('URLTextBox').Text = url
+		program:GetObject('URLTextBox').Visible = true
+		program:GetObject('LoadingLabel').Visible = false
+		program.Timers[timeoutTimer] = nil
+
+		if not noHistory then
+			addHistoryURL(url)
+		end
+
+		_error = _error or 1
+
+		program:GetObject('WebView'):GoToURL('quest://'.._error..'.ccml', true, true)
+	end
+
+	program:GetObject('Toolbar').OnClick = function(self, event, side, x, y)
+		program:SetActiveObject()
+	end
+
+	program:GetObject('WebView').OnClick = function(self, event, side, x, y)
+		program:SetActiveObject()
+	end
+
+	if settings.ClientIdentifier then
+		goHome()
+	end
+	-- program:GetObject('WebView'):GoToURL('quest://404.ccml')
+	-- program:GetObject('WebView'):GoToURL('http://localhost:3000/')
+
+	-- program:GetObject('WebView'):GoToURL('http://quest.net76.net/about.php')
+	-- program:GetObject('WebView'):GoToURL('http://olivercooper.me/ccml/form.php')
+end)
+
+

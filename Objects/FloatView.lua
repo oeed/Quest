@@ -1,0 +1,2 @@
+Inherit = 'View'
+IsFloat = true

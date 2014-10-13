@@ -1,0 +1,48 @@
+<!DOCTYPE ccml>
+<html>
+
+<head>
+    <title>Home</title>
+    <script type="lua">
+        l('h').text(l('div').attr('bgcolour')[1])
+        l('p').width(10)
+        l('p').color(colours.blue)
+        l('p').bgcolor(colours.orange)
+        l('p').align('center')
+        l('a').remove()
+        l('p').text(os.version())
+        local i = setInterval(function()
+            l('p').text(textutils.formatTime(os.time()))
+        end, 1)
+        -- Bug: changing page leaves these timers running
+    </script>
+</head>
+
+<body bgcolour="grey">
+    <div bgcolour="white">
+        <br/>
+        <center>
+            <float width="30">
+                <div width="1"></div>
+                <a href="index.html" align="center" width="6">Home</a>
+                <a href="time.php" align="center" width="6">Time</a>
+                <a href="form.php" align="center" width="7">Forms</a>
+            </float>
+        </center>
+        <br/>
+    </div>
+    <div bgcolour="grey" height="2"></div>
+    <center>
+        <div bgcolour="white" width="40">
+            <br/>
+            <h>Home</h>
+            <br/>
+            <center>
+                <p width="34">Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim adminim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl utaliquip ex ea commodo consequat.</p>
+            </center>
+            <br/>
+        </div>
+    </center>
+</body>
+
+</html>
