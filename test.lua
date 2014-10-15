@@ -1,1 +1,1 @@
-test2()textutils.serialize(table)
+        l('p').text(os.version())

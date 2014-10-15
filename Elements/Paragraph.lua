@@ -13,7 +13,7 @@ Initialise = function(self, node)
 	local attr = node._attr
 	new.Tag = node._tag
 	new.Attributes = attr
-	new.Text = node[1]
+	new.Text = node[1] or ''
 	new.Children = {}
 	if attr.colour then
 		new.TextColour = self:ParseColour(attr.colour)
@@ -29,6 +29,10 @@ Initialise = function(self, node)
 
 	if attr.width then
 		new.Width = attr.width
+	end
+
+	if attr.height then
+		new.Height = attr.height
 	end
 
 	if attr.align then
@@ -62,10 +66,19 @@ CreateObject = function(self, parentObject, y)
 		Y = y,
 		X = 1,
 		Width = self.Width,
+		Height = self.Height,
 		Align = self.Align,
 		Type = "Label",
 		Text = self.Text,
 		TextColour = self.TextColour,
-		BackgroundColour = self.BackgroundColour
+		BackgroundColour = self.BackgroundColour,
+		OnUpdate = function(_self, value)
+		    if value == 'Text' then
+		        if not self.Attributes.height then
+            		_self.Height = #_self.Bedrock.Helpers.WrapText(_self.Text, _self.Width)
+					_self.Bedrock:GetObject('WebView'):RepositionLayout()
+		        end
+		    end
+		end
 	})
 end

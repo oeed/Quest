@@ -1,3 +1,8 @@
+QuestVersion = 'v0.9.0 Private Beta'
+if OneOS then
+	QuestVersion = QuestVersion .. '-OneOS ' .. OneOS.Version()
+end
+
 -- TODO: have a much simpler API loader... not a 70+ line one
 local Extension = function(path, addDot)
 	if not path then
@@ -106,7 +111,7 @@ local httpQueue = {}
 
 program:RegisterEvent('http_success', function(self, event, url, response)
 	for i, request in ipairs(httpQueue) do
-		if request[1] == url then
+		if request[3] == url then
 			request[2](true, url, response)
 			table.remove(httpQueue, i)
 			break
@@ -116,7 +121,7 @@ end)
 
 program:RegisterEvent('http_failure', function(self, event, url)
 	for i, request in ipairs(httpQueue) do
-		if request[1] == url then
+		if request[3] == url then
 			request[2](false, Errors.Unknown)
 			table.remove(httpQueue, i)
 			break
@@ -136,11 +141,11 @@ end
 
 local settings = false
 
-function fetchHTTPAsync(_url, callback, post)
-	local components = urlComponents(_url)
+function fetchHTTPAsync(url, callback, post)
+	local components = urlComponents(url)
 	if components.protocol == 'quest' then
-		local file = fs.open(program.ProgramPath .. '/Pages/' .. components.sansprotocol, 'r')
-		callback(true, _url, file)
+		local file = fs.open(program.ProgramPath .. '/Pages/' .. components.filepathsansget, 'r')
+		callback(true, url, file)
 	elseif components.protocol == 'file' then
 		local file = fs.open(components.sansprotocol, 'r')
 		if file then
@@ -149,17 +154,16 @@ function fetchHTTPAsync(_url, callback, post)
 			callback(false)
 		end
 	elseif components.protocol == 'http' then
-		local url = resolveQuestHostUrl(_url)
-		table.insert(httpQueue, {_url, callback})
+		local _url = resolveQuestHostUrl(url)
+		table.insert(httpQueue, {url, callback, _url})
 
 		if not post then
 			post = 'questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
 		else
 			post = post .. '&questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
 		end
-
-		http.request(url, post, {
-			['User-Agent'] = 'Quest/1.0'
+		http.request(_url, nil, {
+			['User-Agent'] = 'Quest/'..QuestVersion
 		})
 	end
 end
@@ -190,8 +194,24 @@ function findLast(haystack, needle)
     if i==nil then return nil else return i-1 end
 end
 
+local hex_to_char = function(x)
+  return string.char(tonumber(x, 16))
+end
+
+function urlUnencode( str )
+	-- essentially reverses textutils.urlDecode
+    if str then
+        str = string.gsub(str, "+", " ")
+        str = string.gsub(str, "\r\n", "\n")
+        term.setTextColor(colors.black)
+        str = str:gsub("%%(%x%x)", hex_to_char)
+    end
+    return str    
+end
+
 function urlComponents(url)
 	if url then
+		urlUnencode(textutils.urlEncode(url))
 		local components = {}
 		local parts = split(url, '[\\/]+')
 		if url:find('://') and parts[1]:sub(#parts[1]) == ':' then
@@ -205,6 +225,18 @@ function urlComponents(url)
 				components.filename = ''
 			end
 			components.base = url:sub(1, findLast(url, '/'))
+			components.get = {}
+			components.filepathsansget = components.sansprotocol
+			if url:find('?') then
+				local start = url:find('?')
+				components.filepathsansget = url:sub(#components.protocol + 4, start - 1)
+				local getString = url:sub(start + 1)
+				local values = split(getString, '&')
+				for i, v in ipairs(values) do
+					local keyvalue = split(v, '=')
+					components.get[keyvalue[1]] =  urlUnencode(keyvalue[2])
+				end
+			end
 			return components
 		end
 	end
@@ -244,12 +276,16 @@ function goToUrl(url, post)
 	program:GetObject('WebView'):GoToURL(url, nil, nil, post)
 end
 
+--	Yes, it's evil and terrible, etc. But I'll hopefully change it later.
 _G.cancelHTTPAsync = cancelHTTPAsync
 _G.fetchHTTPAsync = fetchHTTPAsync
 _G.resolveFullUrl = resolveFullUrl
 _G.resolveQuestHostUrl = resolveQuestHostUrl
 _G.getCurrentUrl = getCurrentUrl
 _G.goToUrl = goToUrl
+_G.split = split
+_G.urlComponents = urlComponents
+_G.QuestVersion = QuestVersion
 
 local history = {}
 local historyItem = 0
@@ -280,7 +316,7 @@ function addHistoryURL(url)
 end
 
 local defaultSettings = {
-	Home = 'http://quest.net76.net/about.php',
+	Home = 'http://thehub.qst/',
 	ClientIdentifier = nil
 }
 
@@ -430,7 +466,7 @@ program:Run(function()
 
 		
 		timeoutTimer = program:StartTimer(function()
-			program:GetObject('WebView'):Stop()
+			-- program:GetObject('WebView'):Stop()
 		end, 10)
 	end
 
@@ -462,9 +498,14 @@ program:Run(function()
 			addHistoryURL(url)
 		end
 
+		local get = ''
 		_error = _error or 1
+		if type(_error) == 'string' then
+			get = '?reason='..textutils.urlEncode(_error)
+			_error = 'text'
+		end
 
-		program:GetObject('WebView'):GoToURL('quest://'.._error..'.ccml', true, true)
+		program:GetObject('WebView'):GoToURL('quest://'.._error..'.ccml'..get, true, true)
 	end
 
 	program:GetObject('Toolbar').OnClick = function(self, event, side, x, y)

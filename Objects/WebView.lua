@@ -4,6 +4,7 @@ LoadingURL = nil
 Tree = nil
 BackgroundColour = colours.white
 ScriptEnvironment = nil
+Timers = nil
 
 -- TODO: strip this down to remove positioning stuff
 UpdateLayout = function(self)
@@ -168,6 +169,16 @@ end
 
 InitialiseScriptEnvironment = function(self)
 	lQuery.webView = self
+	if self.Timers then
+		for i, timer in ipairs(self.Timers) do
+			-- error('clear '..timer)
+			self.Bedrock.Timers[timer] = nil
+		end
+	end
+	self.Timers = {}
+
+	local getValues = urlComponents(self.LoadingURL).get
+
 	self.ScriptEnvironment = {
 		keys = keys,
 		printError = printError, -- maybe don't have this
@@ -217,12 +228,19 @@ InitialiseScriptEnvironment = function(self)
 		l = lQuery.fn,
 		setTimeout = function(func, delay)
 			if type(func) == 'function' and type(delay) == 'number' then
-				return self.Bedrock:StartTimer(func, delay)
+				local t = self.Bedrock:StartTimer(func, delay)
+				table.insert(self.Timers, t)
+				return t
 			end
 		end,
 		setInterval = function(func, interval)
 			if type(func) == 'function' and type(interval) == 'number' then
-				return self.Bedrock:StartRepeatingTimer(func, interval)
+				local t = self.Bedrock:StartRepeatingTimer(function(timer)
+					table.insert(self.Timers, timer)
+					func()
+				end, interval)
+				table.insert(self.Timers, t)
+				return t
 			end
 		end,
 		clearTimeout = function(timer)
@@ -230,14 +248,25 @@ InitialiseScriptEnvironment = function(self)
 		end,
 		clearInterval = function(timer)
 			self.Bedrock.Timers[timer] = nil
-		end
+		end,
+		window = {
+			location = self.URL,
+			realLocation = self.LoadingURL,
+			get = getValues,
+			version = QuestVersion
+		}
 	}
 end
 
 LoadScript = function(self, script)
-	local fn = loadstring(script)
-	setfenv(fn, self.ScriptEnvironment)
-	fn()
+	local fn, err = loadstring(script, 'Script Tag Error: '..self.URL)
+	if fn then
+		setfenv(fn, self.ScriptEnvironment)
+		fn()
+	else
+		local start = err:find(': ')
+		self:OnPageLoadFailed(url, err:sub(start + 2), noHistory)
+	end
 end
 
 RemoveElement = function(self, elem)
