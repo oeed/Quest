@@ -1,5 +1,6 @@
 Inherit = 'View'
 Height = 2
+UnderlineColour = colours.blue
 
 OnLoad = function(self)
 	if self.Text and #self.Text > 0 then
@@ -30,6 +31,11 @@ OnRecalculateEnd = function(self, currentY)
 	for i = 1, len do
 		underline = underline .. '-'
 	end
+	local col = self.UnderlineColour
+	if self.UnderlineColour == nil then
+		col = self.TextColour
+	end
+
 	local ul = self:AddObject({
 		Y = currentY,
 		X = 1,
@@ -38,7 +44,7 @@ OnRecalculateEnd = function(self, currentY)
 		Type = "Label",
 		Name = "UnderlineLabel",
 		Text = underline,
-		TextColour = self.TextColour,
+		TextColour = col,
 		BackgroundColour = self.BackgroundColour
 	})	
 	return currentY + 1

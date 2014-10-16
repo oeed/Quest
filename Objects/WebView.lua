@@ -12,6 +12,8 @@ UpdateLayout = function(self)
 	self.BackgroundColour = colours.white
 	local body = self.Tree:GetElement('body')
 
+	--TODO: check that body exists, if not redirect to an error page
+
 	if body.BackgroundColour then
 		self.BackgroundColour = body.BackgroundColour
 	end
