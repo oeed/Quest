@@ -1,59 +1,25 @@
-Text = nil
-TextColour = colours.black
-BackgroundColour = colours.transparent
-Attributes = nil
-Children = nil
-Tag = nil
+Align = "Center"
 
-Initialise = function(self, node)
-	local new = {}    -- the new instance
-	setmetatable( new, {__index = self} )
-	local attr = node._attr
-	new.Tag = node._tag
-	new.Attributes = attr
-	new.Text = node[1]
-	new.Children = {}
-	if attr.colour then
-		new.TextColour = self:ParseColour(attr.colour)
-	elseif attr.color then
-		new.TextColour = self:ParseColour(attr.color)
-	end
-
-	if attr.bgcolour then
-		new.BackgroundColour = self:ParseColour(attr.bgcolour)
-	elseif attr.bgcolor then
-		new.BackgroundColour = self:ParseColour(attr.bgcolor)
-	end
-	-- print('make heading')
-	-- print(new.Text)
-	-- print(new.TextColour)
-	-- print(new.BackgroundColour)
-
-	return new
-end
-
-
-ParseColour = function(self, str)
-	if str and type(str) == 'string' then
-		if colours[str] and type(colours[str]) == 'number' then
-			return colours[str]
-		elseif colors[str] and type(colors[str]) == 'number' then
-			return colors[str]
+OnInitialise = function(self, node)
+	local attr = self.Attributes
+	self.Text = self.Text or ''
+	if attr.align then
+		if attr.align:lower() == 'left' or attr.align:lower() == 'center' or attr.align:lower() == 'right' then
+			self.Align = attr.align:lower():gsub("^%l", string.upper)
 		end
 	end
 end
 
-CreateObject = function(self, parentObject, y)
--- print('crate at '..y)
-	return parentObject:AddObject({
+OnCreateObject = function(self, parentObject, y)
+	return {
 		Element = self,
 		Y = y,
 		X = 1,
 		Width = "100%",
-		Align = "Center",
+		Align = self.Align,
 		Type = "HeadingView",
 		Text = self.Text,
 		TextColour = self.TextColour,
 		BackgroundColour = self.BackgroundColour
-	})
+	}
 end

@@ -1,21 +1,14 @@
-Tag = nil
 Text = nil
 URL = nil
 
-Initialise = function(self, node)
-	local new = {}    -- the new instance
-	setmetatable( new, {__index = self} )
-	local attr = node._attr
-	new.Tag = node._tag
-	new.Attributes = attr
-	new.Text = table.concat(node, '\n')
+OnInitialise = function(self, node)
+	local attr = self.Attributes
+	self.Text = table.concat(node, '\n')
 
 	if attr.src then
-		new.URL = attr.src
-		new.Text = nil
+		self.URL = attr.src
+		self.Text = nil
 	end
-
-	return new
 end
 
 InsertScript = function(self, webView)

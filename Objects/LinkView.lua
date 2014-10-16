@@ -47,7 +47,3 @@ end
 OnClick = function(self)
 	self.Bedrock:GetObject('WebView'):GoToURL(self.URL)
 end
-
--- AddObject = function (self, info, extra)
--- 	print(info.Y)
--- end

@@ -1,16 +1,3 @@
-Children = nil
-Tag = nil
-
-Initialise = function(self, node)
-	local new = {}    -- the new instance
-	setmetatable( new, {__index = self} )
-	local attr = node._attr
-	new.Tag = node._tag
-	new.Attributes = attr
-	new.Children = {}
-	return new
-end
-
 Submit = function(self)
 	local values = {}
 	
@@ -54,13 +41,13 @@ Submit = function(self)
 	end
 end
 
-CreateObject = function(self, parentObject, y)
-	return parentObject:AddObject({
+OnCreateObject = function(self, parentObject, y)
+	return {
 		Element = self,
 		Y = y,
 		X = 1,
 		Width = "100%",
 		Height = self.Height,
 		Type = "View"
-	})
+	}
 end

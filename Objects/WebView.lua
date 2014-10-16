@@ -30,6 +30,12 @@ UpdateLayout = function(self)
 					end
 					object:OnUpdate('Children')
 				end
+				-- if not object.Height then
+				-- 	for k, v in pairs(object) do
+				-- 		error(v)
+				-- 	end	
+				-- 	error('Nope')
+				-- end
 				currentY = currentY + object.Height
 			end
 		end

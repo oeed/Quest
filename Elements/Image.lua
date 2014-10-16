@@ -1,38 +1,27 @@
-Tag = nil
-TextColour = colours.black
-BackgroundColour = colours.transparent
 URL = nil
 Format = nil
 
-Initialise = function(self, node)
-	local new = {}    -- the new instance
-	setmetatable( new, {__index = self} )
-	local attr = node._attr
-	new.Children = {}
-	new.Tag = node._tag
-	new.Attributes = attr
-
+OnInitialise = function(self, node)
+	local attr = self.Attributes
 	if attr.src then
-		new.URL = attr.src
+		self.URL = attr.src
 	end
 
 	if attr.type then
-		new.Format = attr.type
+		self.Format = attr.type
 	end
 
 	if attr.height then
-		new.Height = attr.height
+		self.Height = attr.height
 	end
 
 	if attr.width then
-		new.Width = attr.width
+		self.Width = attr.width
 	end
-
-	return new
 end
 
-CreateObject = function(self, parentObject, y)
-	return parentObject:AddObject({
+OnCreateObject = function(self, parentObject, y)
+	return {
 		Element = self,
 		Y = y,
 		X = 1,
@@ -41,5 +30,5 @@ CreateObject = function(self, parentObject, y)
 		URL = self.URL,
 		Format = self.Format,
 		Type = "WebImageView"
-	})
+	}
 end

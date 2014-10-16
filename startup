@@ -84,26 +84,36 @@ local bedrockPath='/' if OneOS then OneOS.LoadAPI('/System/API/Bedrock.lua', fal
 os.loadAPI('parser')
 os.loadAPI('lQuery')
 LoadAPI('Elements/Element.lua')
-LoadAPI('Elements/Script.lua')
-LoadAPI('Elements/Center.lua')
-LoadAPI('Elements/Link.lua')
-LoadAPI('Elements/Image.lua')
-LoadAPI('Elements/Divider.lua')
-LoadAPI('Elements/Heading.lua')
-LoadAPI('Elements/Paragraph.lua')
-LoadAPI('Elements/Float.lua')
-LoadAPI('Elements/TextInput.lua')
-LoadAPI('Elements/SecureTextInput.lua')
-LoadAPI('Elements/Select.lua')
-LoadAPI('Elements/Form.lua')
-LoadAPI('Elements/SelectOption.lua')
-LoadAPI('Elements/ButtonInput.lua')
+
 LoadAPI('Elements/ElementTree.lua')
 
-Divider.__index = Element
-setmetatable(Divider, Divider)
-Heading.__index = Element
-setmetatable(Heading, Heading)
+local elements = {
+	'Script',
+	'Center',
+	'Link',
+	'Image',
+	'Divider',
+	'Heading',
+	'Paragraph',
+	'Float',
+	'TextInput',
+	'SecureTextInput',
+	'Select',
+	'Form',
+	'SelectOption',
+	'ButtonInput',
+}
+
+for i, v in ipairs(elements) do
+	LoadAPI('Elements/' .. v .. '.lua')
+	local env = getfenv()
+	local super = Element
+	if env[v].Inherit then
+		super = env[env[v].Inherit]
+	end
+	env[v].__index = super
+	setmetatable(env[v], env[v])
+end
 
 local program = Bedrock:Initialise()
 

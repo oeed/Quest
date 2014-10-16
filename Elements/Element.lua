@@ -1,7 +1,10 @@
+HasChildren = true
 Children = nil
 Tag = nil
 TextColour = colours.black
 BackgroundColour = colours.transparent
+Text = nil
+Width = "100%"
 
 Initialise = function(self, node)
 	local new = {}    -- the new instance
@@ -9,7 +12,9 @@ Initialise = function(self, node)
 	local attr = node._attr
 	new.Tag = node._tag
 	new.Attributes = attr
-	new.Children = {}
+	if new.HasChildren then
+		new.Children = {}
+	end
 
 	if type(node[1]) == 'string' then
 		new.Text = node[1]
@@ -31,6 +36,14 @@ Initialise = function(self, node)
 		new.Height = attr.height
 	end
 
+	if attr.width then
+		new.Width = attr.width
+	end
+
+	if new.OnInitialise then
+		new:OnInitialise(node)
+	end
+
 	return new
 end
 
@@ -45,14 +58,22 @@ ParseColour = function(self, str)
 end
 
 CreateObject = function(self, parentObject, y)
-	return parentObject:AddObject({
-		Element = self,
-		Y = y,
-		X = 1,
-		Width = "100%",
-		Height = self.Height,
-		BackgroundColour = self.BackgroundColour,
-		-- Name = "GoodbyeButton",
-		Type = "View"
-	})
+	local object
+	if self.OnCreateObject then
+		object = self:OnCreateObject()
+	else
+		object = {
+			Element = self,
+			Y = y,
+			X = 1,
+			Width = self.Width,
+			Height = self.Height,
+			BackgroundColour = self.BackgroundColour,
+			Type = "View"
+		}
+	end
+
+	if object then
+		return parentObject:AddObject(object, parentObject, y)
+	end
 end
