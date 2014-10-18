@@ -4,6 +4,7 @@ Tag = nil
 TextColour = colours.black
 BackgroundColour = colours.transparent
 Text = nil
+Attributes = nil
 Width = "100%"
 
 Initialise = function(self, node)

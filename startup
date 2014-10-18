@@ -1,4 +1,4 @@
-QuestVersion = 'v0.9.0 Private Beta'
+local QuestVersion = 'v0.9.0 Private Beta'
 if OneOS then
 	QuestVersion = QuestVersion .. '-OneOS ' .. OneOS.Version()
 end
@@ -44,7 +44,7 @@ local RemoveExtension = function(path)
 end
 
 local tAPIsLoading = {}
-function LoadAPI(_sPath)
+local function LoadAPI(_sPath)
 	local sName = RemoveExtension(fs.getName( _sPath ))
 	if tAPIsLoading[sName] == true then
 	end
@@ -82,6 +82,7 @@ _G.Errors = {
 local bedrockPath='/' if OneOS then OneOS.LoadAPI('/System/API/Bedrock.lua', false)elseif fs.exists(bedrockPath..'/Bedrock')then os.loadAPI(bedrockPath..'/Bedrock')else if http then print('Downloading Bedrock...')local h=http.get('http://pastebin.com/raw.php?i=0MgKNqpN')if h then local f=fs.open(bedrockPath..'/Bedrock','w')f.write(h.readAll())f.close()h.close()os.loadAPI(bedrockPath..'/Bedrock')else error('Failed to download Bedrock. Is your internet working?') end else error('This program needs to download Bedrock to work. Please enable HTTP.') end end if Bedrock then Bedrock.BasePath = bedrockPath Bedrock.ProgramPath = shell.getRunningProgram() end
 
 os.loadAPI('parser')
+os.loadAPI('hash')
 os.loadAPI('lQuery')
 LoadAPI('Elements/Element.lua')
 
@@ -139,7 +140,7 @@ program:RegisterEvent('http_failure', function(self, event, url)
 	end
 end)
 
-function cancelHTTPAsync(url)
+local function cancelHTTPAsync(url)
 	for i, request in ipairs(httpQueue) do
 		if request[1] == url then
 			request[2](false, Errors.TimeoutStop)
@@ -151,7 +152,7 @@ end
 
 local settings = false
 
-function fetchHTTPAsync(url, callback, post)
+local function fetchHTTPAsync(url, callback, post)
 	local components = urlComponents(url)
 	if components.protocol == 'quest' then
 		local file = fs.open(program.ProgramPath .. '/Pages/' .. components.filepathsansget, 'r')
@@ -171,16 +172,17 @@ function fetchHTTPAsync(url, callback, post)
 			post = 'questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
 		else
 			post = post .. '&questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
+		-- error(post)
 		end
-		http.request(_url, nil, {
+		http.request(_url, post, {
 			['User-Agent'] = 'Quest/'..QuestVersion
 		})
 	end
 end
 
-local questHost = 'http://quest.net76.net/'
+local questHost = 'http://quest.net76.net/sites/'
 
-function split(str, pat)
+local function split(str, pat)
    local t = {}
    local fpat = "(.-)" .. pat
    local last_end = 1
@@ -199,7 +201,7 @@ function split(str, pat)
    return t
 end
 
-function findLast(haystack, needle)
+local function findLast(haystack, needle)
     local i=haystack:match(".*"..needle.."()")
     if i==nil then return nil else return i-1 end
 end
@@ -208,7 +210,7 @@ local hex_to_char = function(x)
   return string.char(tonumber(x, 16))
 end
 
-function urlUnencode( str )
+local function urlUnencode( str )
 	-- essentially reverses textutils.urlDecode
     if str then
         str = string.gsub(str, "+", " ")
@@ -219,7 +221,7 @@ function urlUnencode( str )
     return str    
 end
 
-function urlComponents(url)
+local function urlComponents(url)
 	if url then
 		urlUnencode(textutils.urlEncode(url))
 		local components = {}
@@ -252,7 +254,7 @@ function urlComponents(url)
 	end
 end
 
-function resolveQuestHostUrl(url)
+local function resolveQuestHostUrl(url)
 	local components = urlComponents(url)
 	local hostParts = split(components.host, '%.')
 	local tld = hostParts[#hostParts]
@@ -262,7 +264,7 @@ function resolveQuestHostUrl(url)
 	return url
 end
 
-function resolveFullUrl(url)
+local function resolveFullUrl(url)
 	if url and type(url) ~= 'string' then
 	elseif url:find('://') then
 		return url
@@ -278,11 +280,11 @@ function resolveFullUrl(url)
 	end
 end
 
-function getCurrentUrl()
+local function getCurrentUrl()
 	return program:GetObject('WebView').URL
 end
 
-function goToUrl(url, post)
+local function goToUrl(url, post)
 	program:GetObject('WebView'):GoToURL(url, nil, nil, post)
 end
 
@@ -300,7 +302,7 @@ _G.QuestVersion = QuestVersion
 local history = {}
 local historyItem = 0
 
-function updateHistoryButtons()
+local function updateHistoryButtons()
 	if history[historyItem-1] then
 		program:GetObject('BackButton').Enabled = true
 	else
@@ -314,7 +316,7 @@ function updateHistoryButtons()
 	end
 end
 
-function addHistoryURL(url)
+local function addHistoryURL(url)
 	for i, v in ipairs(history) do
 		if i > historyItem then
 			history[i] = nil
@@ -416,7 +418,6 @@ program:Run(function()
 	program:GetObject('ForwardButton').OnClick = function(self)
 		if history[historyItem+1] then
 			historyItem = historyItem + 1
-			-- GoToPath(history[historyItem], true)
 			program:GetObject('WebView'):GoToURL(history[historyItem], nil, true)
 			updateHistoryButtons()
 		end
@@ -458,15 +459,6 @@ program:Run(function()
 		end
 	end
 
-	-- program:GetObject('GoButton').OnClick = function(self, event, side, x, y)
-	-- 	if self.Text == '>' then
-	-- 		local url = program:GetObject('URLTextBox').Text
-	-- 		program:GetObject('WebView'):GoToURL(url)
-	-- 	else
-	-- 		program:GetObject('WebView'):Stop()
-	-- 	end
-	-- end
-
 	program:GetObject('WebView').OnPageLoadStart = function(self, url)
 		program:SetActiveObject()
 		-- program:GetObject('GoButton').Text = 'x'
@@ -476,12 +468,11 @@ program:Run(function()
 
 		
 		timeoutTimer = program:StartTimer(function()
-			-- program:GetObject('WebView'):Stop()
+			program:GetObject('WebView'):Stop()
 		end, 10)
 	end
 
 	program:GetObject('WebView').OnPageLoadEnd = function(self, url, noHistory)
-		-- program:GetObject('GoButton').Text = '>'
 		program:GetObject('URLTextBox').Text = url
 		program:GetObject('URLTextBox').Visible = true
 		program:GetObject('LoadingLabel').Visible = false
@@ -498,7 +489,6 @@ program:Run(function()
 	end
 
 	program:GetObject('WebView').OnPageLoadFailed = function(self, url, _error, noHistory)
-		-- program:GetObject('GoButton').Text = '>'
 		program:GetObject('URLTextBox').Text = url
 		program:GetObject('URLTextBox').Visible = true
 		program:GetObject('LoadingLabel').Visible = false
@@ -529,11 +519,6 @@ program:Run(function()
 	if settings.ClientIdentifier then
 		goHome()
 	end
-	-- program:GetObject('WebView'):GoToURL('quest://404.ccml')
-	-- program:GetObject('WebView'):GoToURL('http://localhost:3000/')
-
-	-- program:GetObject('WebView'):GoToURL('http://quest.net76.net/about.php')
-	-- program:GetObject('WebView'):GoToURL('http://olivercooper.me/ccml/form.php')
 end)
 
 

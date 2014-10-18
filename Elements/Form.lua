@@ -1,11 +1,16 @@
-Submit = function(self)
+Submit = function(self, onEnter)
 	local values = {}
 	
 	local node = false
 	node = function(elem)
 		if (elem.Tag == 'input' or elem.Tag == 'select') and elem.InputName then
+			local findSubmit = (onEnter and elem.Attributes and elem.Attributes.type == 'submit')
 			if elem.UpdateValue then
-				elem:UpdateValue()
+				elem:UpdateValue(findSubmit)
+			end
+
+			if findSubmit then
+				onEnter = false
 			end
 
 			if elem.Value then
@@ -48,6 +53,6 @@ OnCreateObject = function(self, parentObject, y)
 		X = 1,
 		Width = "100%",
 		Height = self.Height,
-		Type = "View"
+		Type = "FormView"
 	}
 end

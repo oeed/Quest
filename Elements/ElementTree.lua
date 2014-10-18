@@ -36,7 +36,11 @@ LoadTree = function(self, rawTree)
 	node = function (tbl, tr, parent)
 		for i, v in ipairs(tbl) do
 			if type(v) == 'table' and v._tag then
-				local element = self:GetElementClass(v._tag, v._attr):Initialise(v)
+				local class = self:GetElementClass(v._tag, v._attr)
+				if not class or not class.Initialise then
+					error('Unknown class: '..v._attr.type)
+				end
+				local element = class:Initialise(v)
 				element.Parent = parent
 				table.insert(tr, element)
 				if element.Children then

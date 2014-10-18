@@ -2101,6 +2101,7 @@ end
 local success = false
 
 if not fs.exists(self.ViewPath..name..'.view') then
+	error(self.ViewPath..name..'.view')
 error('The view: '..name..'.view does not exist.')
 end
 

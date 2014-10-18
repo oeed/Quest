@@ -1,55 +1,26 @@
 BackgroundColour = colours.lightGrey
 TextColour = colours.black
 Text = 'Submit'
-Attributes = nil
-Children = nil
-Tag = nil
-Width = nil
 InputName = ''
-Value = nil
 
-Initialise = function(self, node)
-	local new = {}    -- the new instance
-	setmetatable( new, {__index = self} )
-	local attr = node._attr
-	new.Tag = node._tag
-	new.Attributes = attr
-
-	if attr.colour then
-		new.TextColour = self:ParseColour(attr.colour)
-	elseif attr.color then
-		new.TextColour = self:ParseColour(attr.color)
-	end
-
-	if attr.bgcolour then
-		new.BackgroundColour = self:ParseColour(attr.bgcolour)
-	elseif attr.bgcolor then
-		new.BackgroundColour = self:ParseColour(attr.bgcolor)
-	end
-
-	if attr.width then
-		new.Width = attr.width
-	end
-
+OnInitialise = function(self, node)
+	local attr = self.Attributes
 	if attr.value then
-		new.Text = attr.value
+		self.Text = attr.value
 	end
 
 	if attr.name then
-		new.InputName = attr.name
+		self.InputName = attr.name
 	end
 
-	return new
+	if not attr.width then
+		self.Width = #self.Text + 2
+	end
 end
 
-
-ParseColour = function(self, str)
-	if str and type(str) == 'string' then
-		if colours[str] and type(colours[str]) == 'number' then
-			return colours[str]
-		elseif colors[str] and type(colors[str]) == 'number' then
-			return colors[str]
-		end
+UpdateValue = function(self, force)
+	if force then
+		self.Value = self.Object.Text
 	end
 end
 

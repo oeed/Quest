@@ -74,7 +74,12 @@ RepositionLayout = function(self)
 					currentY = currentY + tallestChild
 					tallestChild = 1
 				end
-				child.X = currentX
+
+				if parent.Align == "Left" then
+					child.X = currentX
+				elseif parent.Align == "Right" then
+					child.X = parent.Width - currentX - child.Width + 2
+				end
 			end
 			child.Y = currentY
 
@@ -117,6 +122,14 @@ GoToURL = function(self, url, nonVerbose, noHistory, post)
 	end
 	self.LoadingURL = url
 	self:InitialiseScriptEnvironment()
+
+	if not http and url:find('http://') then
+		if self.OnPageLoadFailed then
+			self:OnPageLoadFailed(url, 4, noHistory)
+		end
+		return
+	end
+
 	fetchHTTPAsync(url, function(ok, event, response)
 		self.LoadingURL = nil
 		if ok then
