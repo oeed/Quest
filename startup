@@ -1,6 +1,6 @@
 local QuestVersion = 'v0.9.0 Private Beta'
 if OneOS then
-	QuestVersion = QuestVersion .. '-OneOS ' .. OneOS.Version()
+	QuestVersion = QuestVersion .. '-OneOS ' .. OneOS.Version
 end
 
 -- TODO: have a much simpler API loader... not a 70+ line one
@@ -367,9 +367,6 @@ local function generateClientIdentifier()
 	program:Draw()
 	local h = http.get('http://quest.net76.net/registerClient.php')
 	program.Window:Close()
-
-		settings.ClientIdentifier = '1245'
-		saveSettings()
 
 	if h then
 		settings.ClientIdentifier = h.readAll()
