@@ -1,4 +1,4 @@
---Bedrock Build: 188
+--Bedrock Build: 193
 --This code is squished down in to one, rather hard to read file.
 --As such it is not much good for anything other than being loaded as an API.
 --If you want to look at the code to learn from it, copy parts or just take a look,
@@ -1217,7 +1217,7 @@ OnDraw = function(self, x, y)
     local percentage = (self.Scroll/self.MaxScroll)
 
     Drawing.DrawBlankArea(x, y, self.Width, self.Height, self.BackgroundColour)
-    Drawing.DrawBlankArea(x, y + self.Bedrock.Helpers.Round(self.Height*percentage - barHeight*percentage), self.Width, barHeight, self.BarColour)
+    Drawing.DrawBlankArea(x, y + math.ceil(self.Height*percentage - barHeight*percentage), self.Width, barHeight, self.BarColour)
 end
 
 OnScroll = function(self, event, direction, x, y)
@@ -1250,7 +1250,7 @@ OnClick = function(self, event, side, x, y)
 		local delta = ((y - self.ClickPoint)/gapHeight)*self.MaxScroll
 		--l(((y - self.ClickPoint)/gapHeight))
 		--l(delta)
-		self.Scroll = delta
+		self.Scroll = self.Bedrock.Helpers.Round(delta)
 		--l(self.Scroll)
 		--l('----')
 		if self.Scroll < 0 then
@@ -1559,7 +1559,13 @@ OnKeyChar = function(self, event, keychar)
 		elseif keychar == keys.left then
 			-- Left
 			if self.CursorPos > 0 then
-				self.CursorPos = self.CursorPos - 1
+				if self.Selected then
+					self.CursorPos = self.DragStart
+					self.DragStart = nil
+					self.Selected = false
+				else
+					self.CursorPos = self.CursorPos - 1
+				end
 				if self.OnChange then
 					self:OnChange(event, keychar)
 				end
@@ -1568,7 +1574,13 @@ OnKeyChar = function(self, event, keychar)
 		elseif keychar == keys.right then
 			-- Right				
 			if self.CursorPos < string.len(self.Text) then
-				self.CursorPos = self.CursorPos + 1
+				if self.Selected then
+					self.CursorPos = self.CursorPos
+					self.DragStart = nil
+					self.Selected = false
+				else
+					self.CursorPos = self.CursorPos + 1
+				end
 				if self.OnChange then
 					self:OnChange(event, keychar)
 				end
@@ -2548,7 +2560,9 @@ function HandleTimer(self, event, timer)
 		if oldTimer[2] then
 			new = self:StartRepeatingTimer(oldTimer[1], oldTimer[3])
 		end
-		oldTimer[1](new)
+		if oldTimer and oldTimer[1] then
+			oldTimer[1](new)
+		end
 	elseif self.OnTimer then
 		self.OnTimer(self, event, timer)
 	end

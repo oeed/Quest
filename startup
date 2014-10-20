@@ -424,7 +424,11 @@ program:Run(function()
 		if keychar == keys.enter then
 			local url = self.Text
 			if not url:find('://') then
-				url = 'http://' .. url 
+				if url:find(' ') or not url:find('%.') then
+					url = 'http://thehub.qst/search?q='..textutils.urlEncode(url)
+				else
+					url = 'http://' .. url 
+				end
 				self.Text = url
 			end
 			program:GetObject('WebView'):GoToURL(url)

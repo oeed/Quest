@@ -2,6 +2,7 @@ Align = 'Left'
 Width = "100%"
 TextColour = colours.blue
 UnderlineColour = nil
+UnderlineVisible = true
 URL = nil
 
 OnInitialise = function(self, node)
@@ -11,9 +12,17 @@ OnInitialise = function(self, node)
 	end
 	
 	if attr.ulcolour then
-		self.UnderlineColour = self:ParseColour(attr.ulcolour)
+		if attr.ulcolour == 'none' then
+			self.UnderlineVisible = false
+		else
+			self.UnderlineColour = self:ParseColour(attr.ulcolour)
+		end
 	elseif attr.ulcolor then
-		self.UnderlineColour = self:ParseColour(attr.ulcolor)
+		if attr.ulcolor == 'none' then
+			self.UnderlineVisible = false
+		else
+			self.UnderlineColour = self:ParseColour(attr.ulcolor)
+		end
 	end
 
 	if attr.align then
@@ -35,6 +44,7 @@ OnCreateObject = function(self, parentObject, y)
 		TextColour = self.TextColour,
 		UnderlineColour = self.UnderlineColour,
 		BackgroundColour = self.BackgroundColour,
-		URL = resolveFullUrl(self.URL)
+		URL = resolveFullUrl(self.URL),
+		UnderlineVisible = self.UnderlineVisible
 	}
 end

@@ -85,6 +85,12 @@ function fn(selector)
 						relayout()
 					end)
 				end,
+
+				focus = function()
+					each(function(elem)
+						elem.Bedrock:SetActiveObject(elem)
+					end)
+				end
 			}
 			response.color = response.colour
 			response.bgcolor = response.bgcolour

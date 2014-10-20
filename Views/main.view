@@ -28,5 +28,5 @@
   },
   ["BackgroundColour"]=1,
   ["ToolBarColour"]=256,
-  ["ToolBarTextColour"] = 1
+  ["ToolBarTextColour"]=1
 }

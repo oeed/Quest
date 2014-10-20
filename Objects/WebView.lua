@@ -68,37 +68,39 @@ RepositionLayout = function(self)
 		local currentX = 1
 		local tallestChild = 1
 		for i, child in ipairs(children) do
-			if isFloat then
-				if currentX ~= 1 and parent.Width - currentX + 1 < child.Width then
-					currentX = 1
-					currentY = currentY + tallestChild
-					tallestChild = 1
+			if child.Type ~= 'ScrollBar' then
+				if isFloat then
+					if currentX ~= 1 and parent.Width - currentX + 1 < child.Width then
+						currentX = 1
+						currentY = currentY + tallestChild
+						tallestChild = 1
+					end
+
+					if parent.Align == "Left" then
+						child.X = currentX
+					elseif parent.Align == "Right" then
+						child.X = parent.Width - currentX - child.Width + 2
+					end
+				end
+				child.Y = currentY
+
+				if child.Children and #child.Children > 0 then
+					local usedY = node(child.Children, child.IsFloat, child)
+					child:OnUpdate('Children')
+					if not child.Element.Attributes.height then
+						child.Height = usedY
+					end
 				end
 
-				if parent.Align == "Left" then
-					child.X = currentX
-				elseif parent.Align == "Right" then
-					child.X = parent.Width - currentX - child.Width + 2
+				if child.Height > tallestChild then
+					tallestChild = child.Height
 				end
-			end
-			child.Y = currentY
 
-			if child.Children and #child.Children > 0 then
-				local usedY = node(child.Children, child.IsFloat, child)
-				child:OnUpdate('Children')
-				if not child.Element.Attributes.height then
-					child.Height = usedY
+				if isFloat then
+					currentX = currentX + child.Width
+				else
+					currentY = currentY + child.Height
 				end
-			end
-
-			if child.Height > tallestChild then
-				tallestChild = child.Height
-			end
-
-			if isFloat then
-				currentX = currentX + child.Width
-			else
-				currentY = currentY + child.Height
 			end
 		end
 		if isFloat then
@@ -172,10 +174,17 @@ end
 ResolveElements = function(self, selector)
 	local elements = {}
 	local node = true
+	local isClass = false
+	if selector:sub(1,1) == '.' then
+		isClass = true
+	end
+
 	node = function(tbl)
 		for i,v in ipairs(tbl) do
 			if type(v) == 'table' and v.Tag then
-				if v.Tag:lower() == selector:lower() then
+				if not isClass and v.Tag:lower() == selector:lower() then
+					table.insert(elements, v.Object)
+				elseif isClass and v.Attributes.class and v.Attributes.class:lower() == selector:lower():sub(2) then
 					table.insert(elements, v.Object)
 				end
 				if v.Children then
