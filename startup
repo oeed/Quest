@@ -284,6 +284,10 @@ local function getCurrentUrl()
 	return program:GetObject('WebView').URL
 end
 
+local function getCurrentFakeUrl()
+	return program:GetObject('WebView').FakeURL
+end
+
 local function goToUrl(url, post)
 	program:GetObject('WebView'):GoToURL(url, nil, nil, post)
 end
@@ -294,6 +298,7 @@ _G.fetchHTTPAsync = fetchHTTPAsync
 _G.resolveFullUrl = resolveFullUrl
 _G.resolveQuestHostUrl = resolveQuestHostUrl
 _G.getCurrentUrl = getCurrentUrl
+_G.getCurrentFakeUrl = getCurrentFakeUrl
 _G.goToUrl = goToUrl
 _G.split = split
 _G.urlComponents = urlComponents

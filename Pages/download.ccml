@@ -1,0 +1,21 @@
+<!DOCTYPE ccml>
+<html>
+	<head>
+		<title>Downloading File</title>
+	    <script type="lua">
+	    	if window.get.path then
+	        	l('p').text('Quest is downloading your file to ' .. window.get.path .. '. Please wait a moment. Leaving this page will cancel the download.')
+	    	end
+	    </script>
+	</head>
+	<body>
+		<br/>
+		<br/>
+		<h colour="blue">Downloading File</h>
+
+		<center>
+			<br>
+			<p width="48" align="center"></p>
+		</center>
+	</body>
+</html>
