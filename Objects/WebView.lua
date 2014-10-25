@@ -136,16 +136,22 @@ GoToURL = function(self, url, nonVerbose, noHistory, post)
 	end
 
 	-- error(fs.getName(url))
-	local fileName
-	if not url:sub(#url) == '/' and url:find('?') then
-		fileName = fs.getName(url:sub(1, url:find('?') - 1))
-	else
-		fileName = fs.getName(url)
-	end
+	local parts = urlComponents(url)
+	-- if url:sub(#url) ~= '/' and url:find('?') then
+	-- 	fileName = fs.getName(url:sub(1, url:find('?') - 1))
+	-- else
+	-- 	fileName = fs.getName(url)
+	-- end
 
-	local extension = fileName:match('%.[0-9a-z%?%%]+$')
-	if extension then
-		extension = extension:sub(2)
+	local fileName = parts.filename
+	local extension
+	if fileName == '' then
+		extension = true
+	else
+		extension = fileName:match('%.[0-9a-z%?%%]+$')
+		if extension then
+			extension = extension:sub(2)
+		end
 	end
 
 	if not url:find('quest://download.ccml') and not url:find('quest://downloaded.ccml') then
@@ -154,7 +160,9 @@ GoToURL = function(self, url, nonVerbose, noHistory, post)
 		extension = true
 	end
 
-	if not extension or (extension ~= true and extension ~= 'ccml' and extension ~= 'html' and extension ~= 'php' and extension ~= 'asp' and extension ~= 'aspx' and extension ~= 'jsp' and extension ~= 'qst' and extension ~= 'com' and extension ~= 'me' and extension ~= 'net' and extension ~= 'info' and extension ~= 'au' and extension ~= 'nz') then
+	-- TODO: 404s are counted as downloads
+
+	if not extension or (extension ~= true and extension ~= '' and extension ~= 'ccml' and extension ~= 'html' and extension ~= 'php' and extension ~= 'asp' and extension ~= 'aspx' and extension ~= 'jsp' and extension ~= 'qst' and extension ~= 'com' and extension ~= 'me' and extension ~= 'net' and extension ~= 'info' and extension ~= 'au' and extension ~= 'nz') then
 		local downloadsFolder = '/Downloads/'
 		if OneOS then
 			downloadsFolder = '/Desktop/Documents/Downloads/'

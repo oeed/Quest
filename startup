@@ -84,6 +84,9 @@ local bedrockPath='/' if OneOS then OneOS.LoadAPI('/System/API/Bedrock.lua', fal
 os.loadAPI('parser')
 os.loadAPI('hash')
 os.loadAPI('lQuery')
+os.loadAPI('Peripheral')
+os.loadAPI('Wireless')
+
 LoadAPI('Elements/Element.lua')
 
 LoadAPI('Elements/ElementTree.lua')
@@ -98,6 +101,7 @@ local elements = {
 	'Paragraph',
 	'Float',
 	'TextInput',
+	'FileInput',
 	'SecureTextInput',
 	'Select',
 	'Form',
@@ -117,6 +121,25 @@ for i, v in ipairs(elements) do
 end
 
 local program = Bedrock:Initialise()
+
+local function split(str, pat)
+   local t = {}
+   local fpat = "(.-)" .. pat
+   local last_end = 1
+   local s, e, cap = str:find(fpat, 1)
+   while s do
+      if s ~= 1 or cap ~= "" then
+	 table.insert(t,cap)
+      end
+      last_end = e+1
+      s, e, cap = str:find(fpat, last_end)
+   end
+   if last_end <= #str then
+      cap = str:sub(last_end)
+      table.insert(t, cap)
+   end
+   return t
+end
 
 local httpQueue = {}
 
@@ -139,6 +162,38 @@ program:RegisterEvent('http_failure', function(self, event, url)
 		end
 	end
 end)
+
+program:RegisterEvent('modem_message', function(self, event, side, channel, replyChannel, message, distance)
+	Wireless.HandleMessage(event, side, channel, replyChannel, message, distance)
+end)
+
+local wifiQueue = {}
+
+Wireless.Responder = function(event, side, channel, replyChannel, message, distance)
+	if channel == Wireless.Channels.QuestServerRequestReply then
+		for i, request in ipairs(wifiQueue) do
+			if request[1] == message.content.url then
+				if message.content.content then
+					local line = 0
+					local lines = split(message.content.content, '\n')
+					local handle = {
+						readAll = function()return message.content.content end,
+						readLine = function()
+							line = line + 1
+							return lines[line]
+						end,
+						close = function()end
+					}
+					request[2](true, message.content.url, handle)
+				else
+					request[2](false, 404)
+				end
+				table.remove(wifiQueue, i)
+				break
+			end
+		end
+	end
+end
 
 local function cancelHTTPAsync(url)
 	for i, request in ipairs(httpQueue) do
@@ -164,6 +219,13 @@ local function fetchHTTPAsync(url, callback, post)
 		else
 			callback(false)
 		end
+	elseif components.protocol == 'wifi' then
+		if Wireless.Present() then
+			table.insert(wifiQueue, {url, callback})
+			Wireless.SendMessage(Wireless.Channels.QuestServerRequest, url)
+		else
+			callback(false, 7)
+		end
 	elseif components.protocol == 'http' then
 		local _url = resolveQuestHostUrl(url)
 		table.insert(httpQueue, {url, callback, _url})
@@ -172,7 +234,6 @@ local function fetchHTTPAsync(url, callback, post)
 			post = 'questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
 		else
 			post = post .. '&questClientIdentifier=' .. textutils.urlEncode(settings.ClientIdentifier)
-		-- error(post)
 		end
 		http.request(_url, post, {
 			['User-Agent'] = 'Quest/'..QuestVersion
@@ -181,25 +242,6 @@ local function fetchHTTPAsync(url, callback, post)
 end
 
 local questHost = 'http://quest.net76.net/sites/'
-
-local function split(str, pat)
-   local t = {}
-   local fpat = "(.-)" .. pat
-   local last_end = 1
-   local s, e, cap = str:find(fpat, 1)
-   while s do
-      if s ~= 1 or cap ~= "" then
-	 table.insert(t,cap)
-      end
-      last_end = e+1
-      s, e, cap = str:find(fpat, last_end)
-   end
-   if last_end <= #str then
-      cap = str:sub(last_end)
-      table.insert(t, cap)
-   end
-   return t
-end
 
 local function findLast(haystack, needle)
     local i=haystack:match(".*"..needle.."()")
@@ -231,9 +273,13 @@ local function urlComponents(url)
 			components.sansprotocol = url:sub(#components.protocol + 4)
 			components.host = parts[2]
 			components.fullhost = components.protocol .. '://' .. parts[2] .. '/'
-			components.filename = fs.getName(url)
 			components.filepath = url:sub(#components.fullhost)
-			if components.filename == components.host then
+			if components.filepath:sub(#components.filepath) ~= '/' and components.filepath:find('?') then
+				components.filename = fs.getName(components.filepath:sub(1, components.filepath:find('?') - 1))
+			else
+				components.filename = fs.getName(components.filepath)
+			end
+			if components.filename == 'root' or components.filename == components.host then
 				components.filename = ''
 			end
 			components.base = url:sub(1, findLast(url, '/'))
@@ -407,6 +453,8 @@ program:Run(function()
 
 	program:LoadView('main')
 
+	Wireless.Initialise()
+
 	loadSettings()
 
 	program:GetObject('BackButton').OnClick = function(self)
@@ -472,10 +520,15 @@ program:Run(function()
 		program:GetObject('LoadingLabel').Visible = true
 		program:GetObject('PageTitleLabel').Text = ''
 
-		
-		timeoutTimer = program:StartTimer(function()
-			program:GetObject('WebView'):Stop()
-		end, 10)
+		if url:find('http://') or url:find('https://') then
+			timeoutTimer = program:StartTimer(function()
+				program:GetObject('WebView'):Stop()
+			end, 10)
+		else
+			timeoutTimer = program:StartTimer(function()
+				program:GetObject('WebView'):Stop()
+			end, 1)
+		end
 	end
 
 	program:GetObject('WebView').OnPageLoadEnd = function(self, url, noHistory)

@@ -98,6 +98,8 @@ GetElementClass = function(self, tag, attr)
 			return SecureTextInput
 		elseif attr.type == 'submit' or attr.type == 'button' then
 			return ButtonInput
+		elseif attr.type == 'file' then
+			return FileInput
 		else
 			return Element
 		end
