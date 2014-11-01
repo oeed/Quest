@@ -1,6 +1,6 @@
 BackgroundColour = colours.lightGrey
 TextColour = colours.black
-Text = 'Choose File'
+Text = 'Choose File...'
 InputName = ''
 FilePath = 'test'
 
@@ -24,10 +24,8 @@ UpdateValue = function(self, force)
 		local f = fs.open(self.FilePath, 'r')
 		if f then
 			local content = f.readAll()
-			self.Value = '{"name": "' .. fs.getName(self.FilePath):gsub('"', '\\"') .. '", "content": "' .. content:gsub('"', '\\"') .. '"}';
-			h = fs.open('v', 'w')
-			h.write(self.Value)
-			h.close()
+			self.Value = '{"name": "' .. fs.getName(self.FilePath):gsub('"', '\\"') .. '", "content": "' .. content:gsub('"', '\\"') .. '"}'
+			f.close()
 		end
 	end
 end
@@ -44,15 +42,13 @@ CreateObject = function(self, parentObject, y)
 		BackgroundColour = self.BackgroundColour,
 		InputName = self.InputName,
 		OnClick = function(_self, event, side, x, y)
-			local form = self
-			local step = 0
-			while form.Tag ~= 'form' and step < 50 do
-				form = form.Parent
-			end
-			self:UpdateValue()
-			if form and form.Submit then
-				form:Submit()
-			end
+			_self.Bedrock:DisplayOpenFileWindow(nil, function(success, path)
+				if success then
+					self.FilePath = path
+					_self.Text = 'File: '..fs.getName(path)
+					_self.Align = 'Left'
+				end
+			end)
 		end
 	})
 end

@@ -478,7 +478,7 @@ program:Run(function()
 			local url = self.Text
 			if not url:find('://') then
 				if url:find(' ') or not url:find('%.') then
-					url = 'http://thehub.qst/search?q='..textutils.urlEncode(url)
+					url = 'http://thehub.qst/search.php?q='..textutils.urlEncode(url)
 				else
 					url = 'http://' .. url 
 				end
@@ -499,11 +499,11 @@ program:Run(function()
 			end
 
 			program:GetObject('GoHomeMenuItem').OnClick = function(self, event, side, x, y)
-				program:GetObject('WebView'):GoToURL('http://quest.net76.net/')
+				goHome()
 			end
 
 			program:GetObject('SetHomeMenuItem').OnClick = function(self, event, side, x, y)
-				settings.Home = program:GetObject('WebView').URL
+				settings.Home = program:GetObject('WebView').FakeURL
 				saveSettings()
 			end
 

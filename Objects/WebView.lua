@@ -145,7 +145,7 @@ GoToURL = function(self, url, nonVerbose, noHistory, post)
 
 	local fileName = parts.filename
 	local extension
-	if fileName == '' then
+	if fileName == '' or url:sub(#url) == '/' then
 		extension = true
 	else
 		extension = fileName:match('%.[0-9a-z%?%%]+$')
