@@ -107,6 +107,7 @@ local elements = {
 	'Form',
 	'SelectOption',
 	'ButtonInput',
+	'HiddenInput',
 }
 
 for i, v in ipairs(elements) do
@@ -523,7 +524,7 @@ program:Run(function()
 		if url:find('http://') or url:find('https://') then
 			timeoutTimer = program:StartTimer(function()
 				program:GetObject('WebView'):Stop()
-			end, 10)
+			end, 20)
 		else
 			timeoutTimer = program:StartTimer(function()
 				program:GetObject('WebView'):Stop()

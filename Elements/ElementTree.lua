@@ -100,6 +100,8 @@ GetElementClass = function(self, tag, attr)
 			return ButtonInput
 		elseif attr.type == 'file' then
 			return FileInput
+		elseif attr.type == 'hidden' then
+			return HiddenInput
 		else
 			return Element
 		end

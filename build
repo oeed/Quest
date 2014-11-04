@@ -3,7 +3,131 @@
 --  This file REALLLLLLLY isn't suitable to be used for anything other than being executed --
 
 --  To extract all the files, run: "<filename> --extract" in the Shell --
-local files = {["parser"]="--[[\
+local files = {["Wireless"]="--This is just the OneOS Wireless API\
+\
+--OneOS uses channels between 4200 and 4300, avoid use where possible\
+\
+Channels = {\
+	Ignored = 4299,\
+	Ping = 4200,\
+	PingReply = 4201,\
+	QuestServerRequest = 4250,\
+	QuestServerRequestReply = 4251,\
+	QuestServerNameAvailable = 4252,\
+	QuestServerNameAvailableReply = 4253,\
+}\
+\
+local function isOpen(channel)\
+	return Peripheral.CallType('wireless_modem', 'isOpen', channel)\
+end\
+\
+local function open(channel)\
+	if not isOpen(channel) then\
+		Peripheral.CallType('wireless_modem', 'open', channel)\
+	end\
+end\
+\
+Open = open\
+\
+local function close(channel)\
+	Peripheral.CallType('wireless_modem', 'close', channel)\
+end\
+\
+local function closeAll()\
+	Peripheral.CallType('wireless_modem', 'closeAll')\
+end\
+\
+local function transmit(channel, replyChannel, message)\
+	Peripheral.CallType('wireless_modem', 'transmit', channel, replyChannel, textutils.serialize(message))\
+end\
+\
+function Present()\
+	if Peripheral.GetPeripheral('wireless_modem') == nil then\
+		return false\
+	else\
+		return true\
+	end\
+end\
+\
+local function FormatMessage(message, messageID, destinationID)\
+	return {\
+		content = textutils.serialize(message),\
+		senderID = os.getComputerID(),\
+		senderName = os.getComputerLabel(),\
+		channel = channel,\
+		replyChannel = reply,\
+		messageID = messageID or math.random(10000),\
+		destinationID = destinationID\
+	}\
+end\
+\
+local Timeout = function(func, time)\
+	time = time or 1\
+	parallel.waitForAny(func, function()\
+		sleep(time)\
+		--log('Timeout!'..time)\
+	end)\
+end\
+\
+RecieveMessage = function(_channel, messageID, timeout)\
+	open(_channel)\
+	local done = false\
+	local event, side, channel, replyChannel, message = nil\
+	Timeout(function()\
+		while not done do\
+			event, side, channel, replyChannel, message = os.pullEvent('modem_message')\
+			if channel ~= _channel then\
+				event, side, channel, replyChannel, message = nil\
+			else\
+				message = textutils.unserialize(message)\
+				message.content = textutils.unserialize(message.content)\
+				if messageID and messageID ~= message.messageID or (message.destinationID ~= nil and message.destinationID ~= os.getComputerID()) then\
+					event, side, channel, replyChannel, message = nil\
+				else\
+					done = true\
+				end\
+			end\
+		end\
+	end,\
+	timeout)\
+	return event, side, channel, replyChannel, message\
+end\
+\
+Initialise = function()\
+	if Present() then\
+		for i, c in pairs(Channels) do\
+			open(c)\
+		end\
+	end\
+end\
+\
+HandleMessage = function(event, side, channel, replyChannel, message, distance)\
+	message = textutils.unserialize(message)\
+	message.content = textutils.unserialize(message.content)\
+\
+	if channel == Channels.Ping then\
+		if message.content == 'Ping!' then\
+			SendMessage(replyChannel, 'Pong!', nil, message.messageID)\
+		end\
+	elseif message.destinationID ~= nil and message.destinationID ~= os.getComputerID() then\
+	elseif Wireless.Responder then\
+		Wireless.Responder(event, side, channel, replyChannel, message, distance)\
+	end\
+end\
+\
+SendMessage = function(channel, message, reply, messageID, destinationID)\
+	reply = reply or channel + 1\
+	open(channel)\
+	open(reply)\
+	local _message = FormatMessage(message, messageID, destinationID)\
+	transmit(channel, reply, _message)\
+	return _message\
+end\
+\
+Ping = function()\
+	local message = SendMessage(Channels.Ping, 'Ping!', Channels.PingReply)\
+	RecieveMessage(Channels.PingReply, message.messageID)\
+end",["parser"]="--[[\
     This API was not created by myself, it was copied from https://github.com/voidfiles/webscript-lua-modules/tree/master/html\
 \
     It has been modified slightly to be more suitable for CCML (removed unused tags, cleaned up returned table a little, etc)\
@@ -451,1320 +575,7 @@ function parsestr(s)\
     end\
   }\
   return parse(handle)\
-end",["hash"]="--\
---  Thanks to GravityScore for this!\
---  http://www.computercraft.info/forums2/index.php?/topic/8169-sha-256-in-pure-lua/\
---\
---  This is used to hash passwords sent with the secure text field. It just reduces the chance of people getting hacked.\
---\
-\
---  \
---  Adaptation of the Secure Hashing Algorithm (SHA-244/256)\
---  Found Here: http://lua-users.org/wiki/SecureHashAlgorithm\
---  \
---  Using an adapted version of the bit library\
---  Found Here: https://bitbucket.org/Boolsheet/bslf/src/1ee664885805/bit.lua\
---  \
-\
-local MOD = 2^32\
-local MODM = MOD-1\
-\
-local function memoize(f)\
-	local mt = {}\
-	local t = setmetatable({}, mt)\
-	function mt:__index(k)\
-		local v = f(k)\
-		t[k] = v\
-		return v\
-	end\
-	return t\
-end\
-\
-local function make_bitop_uncached(t, m)\
-	local function bitop(a, b)\
-		local res,p = 0,1\
-		while a ~= 0 and b ~= 0 do\
-			local am, bm = a % m, b % m\
-			res = res + t[am][bm] * p\
-			a = (a - am) / m\
-			b = (b - bm) / m\
-			p = p*m\
-		end\
-		res = res + (a + b) * p\
-		return res\
-	end\
-	return bitop\
-end\
-\
-local function make_bitop(t)\
-	local op1 = make_bitop_uncached(t,2^1)\
-	local op2 = memoize(function(a) return memoize(function(b) return op1(a, b) end) end)\
-	return make_bitop_uncached(op2, 2 ^ (t.n or 1))\
-end\
-\
-local bxor1 = make_bitop({[0] = {[0] = 0,[1] = 1}, [1] = {[0] = 1, [1] = 0}, n = 4})\
-\
-local function bxor(a, b, c, ...)\
-	local z = nil\
-	if b then\
-		a = a % MOD\
-		b = b % MOD\
-		z = bxor1(a, b)\
-		if c then z = bxor(z, c, ...) end\
-		return z\
-	elseif a then return a % MOD\
-	else return 0 end\
-end\
-\
-local function band(a, b, c, ...)\
-	local z\
-	if b then\
-		a = a % MOD\
-		b = b % MOD\
-		z = ((a + b) - bxor1(a,b)) / 2\
-		if c then z = bit32_band(z, c, ...) end\
-		return z\
-	elseif a then return a % MOD\
-	else return MODM end\
-end\
-\
-local function bnot(x) return (-1 - x) % MOD end\
-\
-local function rshift1(a, disp)\
-	if disp < 0 then return lshift(a,-disp) end\
-	return math.floor(a % 2 ^ 32 / 2 ^ disp)\
-end\
-\
-local function rshift(x, disp)\
-	if disp > 31 or disp < -31 then return 0 end\
-	return rshift1(x % MOD, disp)\
-end\
-\
-local function lshift(a, disp)\
-	if disp < 0 then return rshift(a,-disp) end \
-	return (a * 2 ^ disp) % 2 ^ 32\
-end\
-\
-local function rrotate(x, disp)\
-    x = x % MOD\
-    disp = disp % 32\
-    local low = band(x, 2 ^ disp - 1)\
-    return rshift(x, disp) + lshift(low, 32 - disp)\
-end\
-\
-local k = {\
-	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,\
-	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,\
-	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,\
-	0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\
-	0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,\
-	0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,\
-	0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,\
-	0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\
-	0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,\
-	0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,\
-	0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,\
-	0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\
-	0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,\
-	0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,\
-	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,\
-	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,\
-}\
-\
-local function str2hexa(s)\
-	return (string.gsub(s, \".\", function(c) return string.format(\"%02x\", string.byte(c)) end))\
-end\
-\
-local function num2s(l, n)\
-	local s = \"\"\
-	for i = 1, n do\
-		local rem = l % 256\
-		s = string.char(rem) .. s\
-		l = (l - rem) / 256\
-	end\
-	return s\
-end\
-\
-local function s232num(s, i)\
-	local n = 0\
-	for i = i, i + 3 do n = n*256 + string.byte(s, i) end\
-	return n\
-end\
-\
-local function preproc(msg, len)\
-	local extra = 64 - ((len + 9) % 64)\
-	len = num2s(8 * len, 8)\
-	msg = msg .. \"\\128\" .. string.rep(\"\\0\", extra) .. len\
-	assert(#msg % 64 == 0)\
-	return msg\
-end\
-\
-local function initH256(H)\
-	H[1] = 0x6a09e667\
-	H[2] = 0xbb67ae85\
-	H[3] = 0x3c6ef372\
-	H[4] = 0xa54ff53a\
-	H[5] = 0x510e527f\
-	H[6] = 0x9b05688c\
-	H[7] = 0x1f83d9ab\
-	H[8] = 0x5be0cd19\
-	return H\
-end\
-\
-local function digestblock(msg, i, H)\
-	local w = {}\
-	for j = 1, 16 do w[j] = s232num(msg, i + (j - 1)*4) end\
-	for j = 17, 64 do\
-		local v = w[j - 15]\
-		local s0 = bxor(rrotate(v, 7), rrotate(v, 18), rshift(v, 3))\
-		v = w[j - 2]\
-		w[j] = w[j - 16] + s0 + w[j - 7] + bxor(rrotate(v, 17), rrotate(v, 19), rshift(v, 10))\
-	end\
-\
-	local a, b, c, d, e, f, g, h = H[1], H[2], H[3], H[4], H[5], H[6], H[7], H[8]\
-	for i = 1, 64 do\
-		local s0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))\
-		local maj = bxor(band(a, b), band(a, c), band(b, c))\
-		local t2 = s0 + maj\
-		local s1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))\
-		local ch = bxor (band(e, f), band(bnot(e), g))\
-		local t1 = h + s1 + ch + k[i] + w[i]\
-		h, g, f, e, d, c, b, a = g, f, e, d + t1, c, b, a, t1 + t2\
-	end\
-\
-	H[1] = band(H[1] + a)\
-	H[2] = band(H[2] + b)\
-	H[3] = band(H[3] + c)\
-	H[4] = band(H[4] + d)\
-	H[5] = band(H[5] + e)\
-	H[6] = band(H[6] + f)\
-	H[7] = band(H[7] + g)\
-	H[8] = band(H[8] + h)\
-end\
-\
-function sha256(msg)\
-	msg = preproc(msg, #msg)\
-	local H = initH256({})\
-	for i = 1, #msg, 64 do digestblock(msg, i, H) end\
-	return str2hexa(num2s(H[1], 4) .. num2s(H[2], 4) .. num2s(H[3], 4) .. num2s(H[4], 4) ..\
-		num2s(H[5], 4) .. num2s(H[6], 4) .. num2s(H[7], 4) .. num2s(H[8], 4))\
-end",["Objects"]={["HeadingView.lua"]="Inherit = 'View'\
-Height = 3\
-\
-OnLoad = function(self)\
-	self:OnUpdate('Text')\
-end\
-\
-OnUpdate = function(self, value)\
-	if value == 'Text' then\
-		self:RemoveAllObjects()\
-		self:AddObject({\
-			Y = 1,\
-			X = 1,\
-			Width = \"100%\",\
-			Align = \"Center\",\
-			Type = \"Label\",\
-			Text = self.Text,\
-			TextColour = self.TextColour,\
-			BackgroundColour = self.BackgroundColour\
-		})\
-\
-		local underline = ''\
-		for i = 1, #self.Text + 2 do\
-			underline = underline .. '='\
-		end\
-		self:AddObject({\
-			Y = 2,\
-			X = 1,\
-			Width = \"100%\",\
-			Align = \"Center\",\
-			Type = \"Label\",\
-			Text = underline,\
-			TextColour = self.TextColour,\
-			BackgroundColour = self.BackgroundColour\
-		})\
-	end\
-end",["WebImageView.lua"]="URL = false\
-Image = false\
-\
-OnDraw = function(self, x, y)\
-	if not self.Image then\
-		Drawing.DrawBlankArea(x, y, self.Width, self.Height, colours.lightGrey)\
-	elseif self.Format == 'nft' then\
-		Drawing.DrawImage(x, y, self.Image, self.Width, self.Height)\
-	elseif self.Format == 'nfp' or self.Format == 'paint' then\
-		for _x, col in ipairs(self.Image) do\
-			for _y, colour in ipairs(col) do\
-	            Drawing.WriteToBuffer(x+_x-1, y+_y-1, ' ', colours.white, colour)\
-			end\
-		end\
-	elseif self.Format == 'skch' or self.Format == 'sketch' then\
-		Drawing.DrawImage(x, y, self.Image, self.Width, self.Height)\
-	end\
-end\
-\
-OnUpdate = function(self, value)\
-	if value == 'URL' and self.URL then\
-		fetchHTTPAsync(resolveFullUrl(self.URL), function(ok, event, response)\
-			if ok then\
-				local width, height = self.Width, self.Height\
-\
-				local lines = {}\
-				for line in response.readLine do\
-					table.insert(lines, line)\
-				end\
-				response.close()\
-				local content = table.concat(lines, '\\n')\
-\
-				if not self.Format then\
-					self.Format = self:DetermineFormat(content)\
-				end\
-\
-				if self.Format == 'nft' then\
-					self.Image, self.Width, self.Height = self:ReadNFT(lines)\
-				elseif self.Format == 'nfp' or self.Format == 'paint' then\
-					self.Image, self.Width, self.Height = self:ReadNFP(lines)\
-				elseif self.Format == 'skch' or self.Format == 'sketch' then\
-					self.Image, self.Width, self.Height = self:ReadSKCH(content)\
-				end\
-				if (width ~= self.Width or height ~= self.Height) then\
-					self.Bedrock:GetObject('WebView'):RepositionLayout()\
-				end\
-			end\
-		end)\
-	end\
-end\
-\
-DetermineFormat = function(self, content)\
-	if type(textutils.unserialize(content)) == 'table' then\
-		-- It's a serlized table, asume sketch\
-		return 'skch'\
-	elseif string.find(content, string.char(30)) or string.find(content, string.char(31)) then\
-		-- Contains the characters that set colours, asume nft\
-		return 'nft'\
-	else\
-		-- Otherwise asume nfp\
-		return 'nfp'\
-	end\
-end\
-\
-ReadSKCH = function(self, content)\
-	local _layers = textutils.unserialize(content)\
-	local layers = {}\
-\
-	local width, height = 1, 1\
-\
-	for i, layer in ipairs(_layers) do\
-		if layer.Visible then\
-			local nft, w, h = self:ReadNFT(layer.Pixels)\
-			if w > width then\
-				width = w\
-			end\
-			if h > height then\
-				height = h\
-			end\
-			table.insert(layers, nft)\
-		end\
-	end\
-\
-	--flatten the layers\
-	local image = {\
-		text = {},\
-		textcol = {}\
-	}\
-\
-	for i, layer in ipairs(layers) do\
-		for y, row in ipairs(layer) do\
-			if not image[y] then\
-				image[y] = {}\
-			end\
-			for x, pixel in ipairs(row) do\
-				if not image[y][x] or pixel ~= colours.transparent then\
-					image[y][x] = pixel\
-				end\
-			end\
-		end\
-		for y, row in ipairs(layer.text) do\
-			if not image.text[y] then\
-				image.text[y] = {}\
-			end\
-			for x, pixel in ipairs(row) do\
-				if not image.text[y][x] or pixel ~= ' ' then\
-					image.text[y][x] = pixel\
-				end\
-			end\
-		end\
-		for y, row in ipairs(layer.textcol) do\
-			if not image.textcol[y] then\
-				image.textcol[y] = {}\
-			end\
-			for x, pixel in ipairs(row) do\
-				if not image.textcol[y][x] or layer.text[y][x] ~= ' ' then\
-					image.textcol[y][x] = pixel\
-				end\
-			end\
-		end\
-	end\
-\
-	return image, width, height\
-end\
-\
-local function getColourOf(hex)\
-	if hex == ' ' then\
-		return colours.transparent\
-	end\
-    local value = tonumber(hex, 16)\
-    if not value then return nil end\
-    value = math.pow(2,value)\
-    return value\
-end\
-\
-ReadNFP = function(self, lines)\
-	local image = {}\
-	local y = 1\
-	for y, line in ipairs(lines) do\
-		for x = 1, #line do\
-			if not image[x] then\
-				image[x] = {}\
-			end\
-			image[x][y] = getColourOf(line:sub(x,x))\
-		end\
-		line = file.readLine()\
-	end\
-	file.close()\
- 	return image, #image, #image[1]\
-end\
-\
-ReadNFT = function(self, lines)\
-	local image = {\
-		text = {},\
-		textcol = {}\
-	}\
-	for num, sLine in ipairs(lines) do\
-        table.insert(image, num, {})\
-        table.insert(image.text, num, {})\
-        table.insert(image.textcol, num, {})\
-        local writeIndex = 1\
-        local bgNext, fgNext = false, false\
-        local currBG, currFG = nil,nil\
-        for i=1,#sLine do\
-                local nextChar = string.sub(sLine, i, i)\
-                if nextChar:byte() == 30 then\
-                        bgNext = true\
-                elseif nextChar:byte() == 31 then\
-                        fgNext = true\
-                elseif bgNext then\
-                        currBG = Drawing.GetColour(nextChar)\
-	                    if currBG == nil then\
-	                    	currBG = colours.transparent\
-	                    end\
-                        bgNext = false\
-                elseif fgNext then\
-                        currFG = Drawing.GetColour(nextChar)\
-	                    if currFG == nil or currFG == colours.transparent then\
-	                    	currFG = colours.white\
-	                    end\
-                        fgNext = false\
-                else\
-                        if nextChar ~= \" \" and currFG == nil then\
-                                currFG = colours.white\
-                        end\
-                        image[num][writeIndex] = currBG\
-                        image.textcol[num][writeIndex] = currFG\
-                        image.text[num][writeIndex] = nextChar\
-                        writeIndex = writeIndex + 1\
-                end\
-        end\
-    end\
- 	return image, #image[1], #image\
-end",["CenterView.lua"]="Inherit = 'View'\
-\
-OnUpdate = function(self, value)\
-	if value == 'Children' or value == 'Width' then\
-		local y = 1\
-		for i, v in ipairs(self.Children) do\
-			v.Y = y\
-			y = y + v.Height\
-			v.X = math.floor((self.Width - v.Width) / 2) + 1\
-		end\
-		self.Height = y - 1\
-	end\
-end",["DividerView.lua"]="Inherit = 'View'\
-Char = nil\
-\
-OnDraw = function(self, x, y)\
-	if self.BackgroundColour then\
-		if self.Char then\
-			Drawing.DrawArea (x, y, self.Width, self.Height, self.Char, self.TextColour, self.BackgroundColour)\
-		else\
-			Drawing.DrawBlankArea(x, y, self.Width, self.Height, self.BackgroundColour)\
-		end\
-	end\
-end",["LinkView.lua"]="Inherit = 'View'\
-Height = 2\
-UnderlineColour = colours.blue\
-UnderlineVisible = true\
-\
-OnLoad = function(self)\
-	if self.Text and #self.Text > 0 then\
-		self:AddObject({\
-			Y = 1,\
-			X = 1,\
-			Width = self.Width,\
-			Align = self.Align,\
-			Type = \"Label\",\
-			Text = self.Text,\
-			TextColour = self.TextColour,\
-			BackgroundColour = self.BackgroundColour\
-		})\
-	end\
-end\
-\
-OnRecalculateStart = function(self)\
-	self:RemoveObject('UnderlineLabel')\
-end\
-\
-OnRecalculateEnd = function(self, currentY)\
-	if self.UnderlineVisible then\
-		local underline = ''\
-		local len = self.Width\
-		if self.Text then\
-			len = #self.Text\
-		end\
-\
-		for i = 1, len do\
-			underline = underline .. '-'\
-		end\
-		local col = self.UnderlineColour\
-		if self.UnderlineColour == nil then\
-			col = self.TextColour\
-		end\
-\
-		local ul = self:AddObject({\
-			Y = currentY,\
-			X = 1,\
-			Width = self.Width,\
-			Align = self.Align,\
-			Type = \"Label\",\
-			Name = \"UnderlineLabel\",\
-			Text = underline,\
-			TextColour = col,\
-			BackgroundColour = self.BackgroundColour\
-		})	\
-		return currentY + 1\
-	else\
-		return currentY\
-	end\
-end\
-\
-OnClick = function(self)\
-	self.Bedrock:GetObject('WebView'):GoToURL(self.URL)\
-end",["SelectView.lua"]="Inherit = 'Button'\
-MenuItems = nil\
-Children = {}\
-Selected = nil\
-\
-OnUpdate = function(self, value)\
-	if value == 'Height' and self.Height ~= 1 then\
-		self.Height = 1\
-	end\
-end\
-\
-Select = function(self, index)\
-	if self.MenuItems[index] then\
-		local text = self.MenuItems[index].Text\
-		for i = 1, self.Width - 3 - #text do\
-			text = text .. ' '\
-		end\
-		text = text .. 'V'\
-		self.Text = text\
-		self.Selected = index\
-	end\
-end\
-\
-OnInitialise = function(self)\
-	self:ClearMenuItems()\
-end\
-\
-ClearMenuItems = function(self)\
-	self.MenuItems = {}\
-end\
-\
-AddMenuItem = function(self, item)\
-	table.insert(self.MenuItems, item)\
-	if not self.Selected then\
-		if #self.MenuItems ~= 0 then\
-			self:Select(1)\
-		end\
-	end\
-end\
-\
-OnClick = function(self, event, side, x, y)\
-	if self:ToggleMenu({\
-		Type = \"Menu\",\
-		HideTop = true,\
-		Children = self.MenuItems\
-	}, x, 1) then\
-		for i, child in ipairs(self.Bedrock.Menu.Children) do\
-			child.OnClick = function(_self, event, side, x, y)\
-				self:Select(i)\
-			end\
-		end\
-	end\
-end",["WebView.lua"]="Inherit = 'ScrollView'\
-URL = nil\
-FakeURL = nil\
-LoadingURL = nil\
-Tree = nil\
-BackgroundColour = colours.white\
-ScriptEnvironment = nil\
-Timers = nil\
-Download = nil\
-\
--- TODO: strip this down to remove positioning stuff\
-UpdateLayout = function(self)\
-	self:RemoveAllObjects()\
-	self.BackgroundColour = colours.white\
-	local body = self.Tree:GetElement('body')\
-\
-	--TODO: check that body exists, if not redirect to an error page\
-\
-	if body.BackgroundColour then\
-		self.BackgroundColour = body.BackgroundColour\
-	end\
-\
-	local node = true\
-	node = function(children, parentObject)\
-		local currentY = 1\
-		for i, v in ipairs(children) do\
-			local object = v:CreateObject(parentObject, currentY)\
-			if object then\
-				v.Object = object\
-				if v.Children and #v.Children > 0 and object.Children then\
-					local usedY = node(v.Children, object)\
-					if not v.Attributes.height then\
-						object.Height = usedY\
-					end\
-					object:OnUpdate('Children')\
-				end\
-				-- if not object.Height then\
-				-- 	for k, v in pairs(object) do\
-				-- 		error(v)\
-				-- 	end	\
-				-- 	error('Nope')\
-				-- end\
-				currentY = currentY + object.Height\
-			end\
-		end\
-		return currentY - 1\
-	end\
-	node(body.Children, self)\
-	\
-	self:RepositionLayout()\
-\
-	local head = self.Tree:GetElement('head')\
-	if head then\
-		for i, child in ipairs(head.Children) do\
-			if child.Tag == 'script' then\
-				child:InsertScript(self)\
-			end\
-		end\
-	end\
-end\
-\
-RepositionLayout = function(self)\
-	local node = true\
-	node = function(children, isFloat, parent)\
-		if parent.OnRecalculateStart then\
-			parent:OnRecalculateStart()\
-		end\
-\
-		local currentY = 1\
-		local currentX = 1\
-		local tallestChild = 1\
-		for i, child in ipairs(children) do\
-			if child.Type ~= 'ScrollBar' then\
-				if isFloat then\
-					if currentX ~= 1 and parent.Width - currentX + 1 < child.Width then\
-						currentX = 1\
-						currentY = currentY + tallestChild\
-						tallestChild = 1\
-					end\
-\
-					if parent.Align == \"Left\" then\
-						child.X = currentX\
-					elseif parent.Align == \"Right\" then\
-						child.X = parent.Width - currentX - child.Width + 2\
-					end\
-				end\
-				child.Y = currentY\
-\
-				if child.Children and #child.Children > 0 then\
-					local usedY = node(child.Children, child.IsFloat, child)\
-					child:OnUpdate('Children')\
-					if not child.Element.Attributes.height then\
-						child.Height = usedY\
-					end\
-				end\
-\
-				if child.Height > tallestChild then\
-					tallestChild = child.Height\
-				end\
-\
-				if isFloat then\
-					currentX = currentX + child.Width\
-				else\
-					currentY = currentY + child.Height\
-				end\
-			end\
-		end\
-		if isFloat then\
-			currentY = currentY + tallestChild\
-		end\
-		if parent.OnRecalculateEnd then\
-			currentY = parent:OnRecalculateEnd(currentY)\
-		end\
-		return currentY - 1\
-	end\
-	node(self.Children, self.IsFloat, self)\
-\
-	self:UpdateScroll()\
-end\
-\
-GoToURL = function(self, url, nonVerbose, noHistory, post)\
-	self.BackgroundColour = colours.white\
-	self:RemoveAllObjects()\
-	if self.OnPageLoadStart and not nonVerbose then\
-		self:OnPageLoadStart(url, noHistory)\
-	end\
-	self.LoadingURL = url\
-	self.FakeURL = url\
-	self:InitialiseScriptEnvironment()\
-\
-	if not http and url:find('http://') then\
-		if self.OnPageLoadFailed then\
-			self:OnPageLoadFailed(url, 4, noHistory)\
-		end\
-		return\
-	end\
-\
-	-- error(fs.getName(url))\
-	local parts = urlComponents(url)\
-	-- if url:sub(#url) ~= '/' and url:find('?') then\
-	-- 	fileName = fs.getName(url:sub(1, url:find('?') - 1))\
-	-- else\
-	-- 	fileName = fs.getName(url)\
-	-- end\
-\
-	local fileName = parts.filename\
-	local extension\
-	if fileName == '' then\
-		extension = true\
-	else\
-		extension = fileName:match('%.[0-9a-z%?%%]+$')\
-		if extension then\
-			extension = extension:sub(2)\
-		end\
-	end\
-\
-	if not url:find('quest://download.ccml') and not url:find('quest://downloaded.ccml') then\
-		self.Download = nil\
-	else\
-		extension = true\
-	end\
-\
-	-- TODO: 404s are counted as downloads\
-\
-	if not extension or (extension ~= true and extension ~= '' and extension ~= 'ccml' and extension ~= 'html' and extension ~= 'php' and extension ~= 'asp' and extension ~= 'aspx' and extension ~= 'jsp' and extension ~= 'qst' and extension ~= 'com' and extension ~= 'me' and extension ~= 'net' and extension ~= 'info' and extension ~= 'au' and extension ~= 'nz') then\
-		local downloadsFolder = '/Downloads/'\
-		if OneOS then\
-			downloadsFolder = '/Desktop/Documents/Downloads/'\
-		end\
-		if not fs.exists(downloadsFolder) then\
-			fs.makeDir(downloadsFolder)\
-		end\
-\
-		local downloadPath = downloadsFolder..fileName\
-		local i = 1\
-		while fs.exists(downloadPath) do\
-			i = i + 1\
-			downloadPath = downloadsFolder..fileName .. ' (' .. i .. ')'\
-		end\
-\
-		self.Download = url\
-		fetchHTTPAsync(url, function(ok, event, response)\
-			if self.Download == url then\
-				self.Download = nil\
-				if ok then\
-					if response.getResponseCode then\
-						local code = response.getResponseCode()\
-						if code ~= 200 then\
-							self:OnPageLoadFailed(url, 6, noHistory)\
-							response.close()\
-							return\
-						end\
-					end\
-					local f = fs.open(downloadPath, 'w')\
-					if f then\
-						f.write(response.readAll())\
-						f.close()\
-						self:GoToURL('quest://downloaded.ccml?path='..textutils.urlEncode(downloadPath), true, true)\
-					else\
-						self:OnPageLoadFailed(url, 6, noHistory)\
-					end\
-					response.close()\
-				else\
-					self:OnPageLoadFailed(url, 6, noHistory)\
-				end\
-			end\
-		end)\
-\
-		self:GoToURL('quest://download.ccml?path='..textutils.urlEncode(downloadPath), true, true)\
-		self:OnPageLoadEnd(url, noHistory)\
-	else\
-		fetchHTTPAsync(url, function(ok, event, response)\
-			self.LoadingURL = nil\
-			if ok then\
-				if response.getResponseCode then\
-					local code = response.getResponseCode()\
-					if code ~= 200 then\
-						if self.OnPageLoadFailed then\
-							self:OnPageLoadFailed(url, code, noHistory)\
-						end\
-						response.close()\
-						return\
-					end\
-				end\
-\
-				self.Tree, err = ElementTree:Initialise(response.readAll())\
-				response.close()\
-				if not err then\
-					self.URL = url\
-					self:UpdateLayout()\
-					if self.OnPageLoadEnd and not nonVerbose then\
-						self:OnPageLoadEnd(url, noHistory)\
-					end\
-				else\
-					if self.OnPageLoadFailed then\
-						self:OnPageLoadFailed(url, err, noHistory)\
-					end\
-				end\
-			elseif self.OnPageLoadFailed and not nonVerbose then\
-				self:OnPageLoadFailed(url, event, noHistory)\
-			end\
-		end, post)\
-	end\
-end\
-\
-Stop = function(self)\
-	cancelHTTPAsync(self.LoadingURL)\
-	if self.OnPageLoadFailed then\
-		self:OnPageLoadFailed(url, Errors.TimeoutStop)\
-	end\
-end\
-\
-ResolveElements = function(self, selector)\
-	local elements = {}\
-	local node = true\
-	local isClass = false\
-	if selector:sub(1,1) == '.' then\
-		isClass = true\
-	end\
-\
-	node = function(tbl)\
-		for i,v in ipairs(tbl) do\
-			if type(v) == 'table' and v.Tag then\
-				if not isClass and v.Tag:lower() == selector:lower() then\
-					table.insert(elements, v.Object)\
-				elseif isClass and v.Attributes.class and v.Attributes.class:lower() == selector:lower():sub(2) then\
-					table.insert(elements, v.Object)\
-				end\
-				if v.Children then\
-					local r = node(v.Children)\
-				end\
-			end\
-		end\
-	end\
-	node(self.Tree.Tree)\
-	return elements\
-end\
-\
-InitialiseScriptEnvironment = function(self)\
-	lQuery.webView = self\
-	if self.Timers then\
-		for i, timer in ipairs(self.Timers) do\
-			-- error('clear '..timer)\
-			self.Bedrock.Timers[timer] = nil\
-		end\
-	end\
-	self.Timers = {}\
-\
-	local getValues = urlComponents(self.LoadingURL).get\
-\
-	self.ScriptEnvironment = {\
-		keys = keys,\
-		printError = printError, -- maybe don't have this\
-		assert = assert,\
-		getfenv = getfenv,\
-		bit = bit,\
-		rawset = rawset,\
-		tonumber = tonumber,\
-		loadstring = loadstring,\
-		error = error, -- maybe don't have this\
-		tostring = tostring,\
-		type = type,\
-		coroutine = coroutine,\
-		next = next,\
-		unpack = unpack,\
-		colours = colours,\
-		pcall = pcall,\
-		math = math,\
-		pairs = pairs,\
-		rawget = rawget,\
-		_G = _G,\
-		__inext = __inext,\
-		read = read,\
-		ipairs = ipairs,\
-		xpcall = xpcall,\
-		rawequal = rawequal,\
-		setfenv = setfenv,\
-		http = http, --create an ajax thing to replace this\
-		string = string,\
-		setmetatable = setmetatable,\
-		getmetatable = getmetatable,\
-		table = table,\
-		parallel = parallel, -- this mightn't work properly\
-		textutils = textutils,\
-		colors = colors,\
-		vector = vector,\
-		select = select,\
-		os = {\
-			version = os.version,\
-			getComputerID = os.getComputerID,\
-			getComputerLabel = os.getComputerLabel,\
-			clock = os.clock,\
-			time = os.time,\
-			day = os.day,\
-		},\
-		lQuery = lQuery.fn,\
-		l = lQuery.fn,\
-		setTimeout = function(func, delay)\
-			if type(func) == 'function' and type(delay) == 'number' then\
-				local t = self.Bedrock:StartTimer(func, delay)\
-				table.insert(self.Timers, t)\
-				return t\
-			end\
-		end,\
-		setInterval = function(func, interval)\
-			if type(func) == 'function' and type(interval) == 'number' then\
-				local t = self.Bedrock:StartRepeatingTimer(function(timer)\
-					table.insert(self.Timers, timer)\
-					func()\
-				end, interval)\
-				table.insert(self.Timers, t)\
-				return t\
-			end\
-		end,\
-		clearTimeout = function(timer)\
-			self.Bedrock.Timers[timer] = nil\
-		end,\
-		clearInterval = function(timer)\
-			self.Bedrock.Timers[timer] = nil\
-		end,\
-		window = {\
-			location = self.URL,\
-			realLocation = self.LoadingURL,\
-			get = getValues,\
-			version = QuestVersion\
-		}\
-	}\
-end\
-\
-LoadScript = function(self, script)\
-	local fn, err = loadstring(script, 'Script Tag Error: '..self.URL)\
-	if fn then\
-		setfenv(fn, self.ScriptEnvironment)\
-		fn()\
-	else\
-		local start = err:find(': ')\
-		self:OnPageLoadFailed(url, err:sub(start + 2), noHistory)\
-	end\
-end\
-\
-RemoveElement = function(self, elem)\
-	local elements = {}\
-	local node = true\
-	node = function(tbl)\
-		for i,v in ipairs(tbl) do\
-			if type(v) == 'table' then\
-				if v == elem.Element then\
-					elem.Parent:RemoveObject(elem)\
-					v = nil\
-					return\
-				end\
-				if v.Children then\
-					local r = node(v.Children)\
-				end\
-			end\
-		end\
-	end\
-	node(self.Tree.Tree)\
-end",["FloatView.lua"]="Inherit = 'View'\
-IsFloat = true\
-Align = \"Left\"",["FormView.lua"]="Inherit = 'View'\
-\
-OnTab = function(self)\
-	local active = self.Bedrock:GetActiveObject()\
-	local selected = nil\
-	local selectNext = false\
-	local function node(tree)\
-		for i, v in ipairs(tree) do\
-			if selectNext then\
-				if v.Type == 'TextBox' or v.Type == 'SecureTextBox' then\
-					selected = v\
-					return\
-				end\
-			elseif v == active then\
-				selectNext = true\
-			end\
-			if v.Children then\
-				node(v.Children)\
-			end\
-		end\
-	end\
-	node(self.Children)\
-\
-	if selected then\
-		self.Bedrock:SetActiveObject(selected)\
-	end\
-end",},["Views"]={["main.view"]="{\
-  [\"Children\"]={\
-    [1]={\
-      [\"Y\"]=1,\
-      [\"X\"]=1,\
-      [\"Name\"]=\"Toolbar\",\
-      [\"Type\"]=\"View\",\
-      [\"InheritView\"]=\"toolbar\"\
-    },\
-    [2]={\
-      [\"Y\"]=4,\
-      [\"X\"]=1,\
-      [\"Height\"]=\"100%,-3\",\
-      [\"Width\"]=\"100%\",\
-      [\"Name\"]=\"WebView\",\
-      [\"Type\"]=\"WebView\"\
-    },\
-    [3]={\
-      [\"Y\"]=1,\
-      [\"X\"]=1,\
-      [\"Height\"]=1,\
-      [\"Width\"]=\"100%\",\
-      [\"Name\"]=\"PageTitleLabel\",\
-      [\"Type\"]=\"Label\",\
-      [\"Align\"]=\"Center\",\
-      [\"TextColour\"]=128,\
-    },\
-  },\
-  [\"BackgroundColour\"]=1,\
-  [\"ToolBarColour\"]=256,\
-  [\"ToolBarTextColour\"]=1\
-}",["optionsmenu.view"]="{\
-  [\"Type\"]=\"Menu\",\
-  [\"Owner\"]=\"OptionsButton\",\
-  [\"Children\"]={\
-    [1]={\
-      [\"Name\"]=\"StopMenuItem\",\
-      [\"Type\"]=\"Button\",\
-      [\"Text\"]=\"Stop\"\
-    },\
-    [2]={\
-      [\"Name\"]=\"ReloadMenuItem\",\
-      [\"Type\"]=\"Button\",\
-      [\"Text\"]=\"Reload\"\
-    },\
-    [3]={\
-      [\"Name\"]=\"GoHomeMenuItem\",\
-      [\"Type\"]=\"Button\",\
-      [\"Text\"]=\"Go Home\"\
-    },\
-    [4]={\
-      [\"Name\"]=\"SetHomeMenuItem\",\
-      [\"Type\"]=\"Button\",\
-      [\"Text\"]=\"Set Home\"\
-    },\
-    [5]={\
-      [\"Name\"]=\"Separator\",\
-      [\"Type\"]=\"Separator\"\
-    },\
-    [6]={\
-      [\"Name\"]=\"QuitMenuItem\",\
-      [\"Type\"]=\"Button\",\
-      [\"Text\"]=\"Quit\"\
-    }\
-  },\
-}",["toolbar.view"]="{\
-  [\"Width\"]=\"100%\",\
-  [\"Height\"]=3,\
-  [\"Type\"]=\"View\",\
-  [\"BackgroundColour\"]=256,\
-  [\"Children\"]={\
-    [1]={\
-      [\"Y\"]=2,\
-      [\"X\"]=2,\
-      [\"Name\"]=\"BackButton\",\
-      [\"Type\"]=\"Button\",\
-      [\"Enabled\"]=false,\
-      [\"TextColour\"]=128,\
-      [\"Text\"]=\"<\",\
-      [\"BackgroundColour\"]=1\
-    },\
-    [2]={\
-      [\"Y\"]=2,\
-      [\"X\"]=6,\
-      [\"Name\"]=\"ForwardButton\",\
-      [\"Type\"]=\"Button\",\
-      [\"Enabled\"]=false,\
-      [\"TextColour\"]=128,\
-      [\"Text\"]=\">\",\
-      [\"BackgroundColour\"]=1\
-    },\
-    [3]={\
-      [\"Y\"]=2,\
-      [\"X\"]=10,\
-      [\"Width\"]=\"100%,-14\",\
-      [\"Type\"]=\"View\",\
-      [\"BackgroundColour\"]=1\
-    },\
-    [4]={\
-      [\"Y\"]=2,\
-      [\"X\"]=10,\
-      [\"Width\"]=\"100%,-14\",\
-      [\"Name\"]=\"URLTextBox\",\
-      [\"Type\"]=\"TextBox\",\
-      [\"TextColour\"]=128,\
-      [\"Placeholder\"]=\"Website URL...\",\
-      [\"PlaceholderTextColour\"]=256,\
-      [\"BackgroundColour\"]=0,\
-      [\"SelectOnClick\"]=true\
-    },\
-    [5]={\
-      [\"Y\"]=2,\
-      [\"X\"]=10,\
-      [\"Width\"]=\"100%,-14\",\
-      [\"Name\"]=\"LoadingLabel\",\
-      [\"Type\"]=\"Label\",\
-      [\"TextColour\"]=256,\
-      [\"Text\"]=\"Loading...\",\
-      [\"BackgroundColour\"]=1,\
-      [\"Align\"]=\"Center\",\
-      [\"Visible\"]=false\
-    },\
-    [6]={\
-      [\"Y\"]=2,\
-      [\"X\"]=\"100%,-3\",\
-      [\"Name\"]=\"OptionsButton\",\
-      [\"Type\"]=\"Button\",\
-      [\"Text\"]=\"V\",\
-      [\"TextColour\"]=128,\
-      [\"BackgroundColour\"]=1\
-    },\
-  },\
-}",},[".Quest.settings"]="{[\"ClientIdentifier\"]=\"8XnhGZdCt28GBKH\",[\"Home\"]=\"http://host.qst/manage.php?site=testsite\",}",["Pages"]={["404.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>Page Not Found</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">404 Page Not Found</h>\
-		<br/>\
-		<center>\
-			<p width=\"38\" align=\"center\">The page was not found on the server. Check the address and try again.</p>\
-		</center>\
-	</body>\
-</html>",["6.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>Download Failed</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">Download Failed</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"38\" align=\"center\">The file you wanted failed to download. Try again or contact the file owner.</p>\
-		</center>\
-	</body>\
-</html>",["7.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>No Modem Connected</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">No Modem Connected</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"38\" align=\"center\">Please attach a wirelss modem and restart Quest.</p>\
-		</center>\
-	</body>\
-</html>",["download.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-		<title>Downloading File</title>\
-	    <script type=\"lua\">\
-	    	if window.get.path then\
-	        	l('p').text('Quest is downloading your file to ' .. window.get.path .. '. Please wait a moment. Leaving this page will cancel the download.')\
-	    	end\
-	    </script>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"blue\">Downloading File</h>\
-\
-		<center>\
-			<br>\
-			<p width=\"48\" align=\"center\"></p>\
-		</center>\
-	</body>\
-</html>",["408.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>Page Not Found</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">Page Load Cancelled</h>\
-		<br/>\
-		<center>\
-			<p width=\"38\" align=\"center\">The page either took too long to load or you cancelled loading it.</p>\
-		</center>\
-	</body>\
-</html>",["text.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-		<title>An Error Occured</title>\
-	    <script type=\"lua\">\
-	    	if window.get.reason then\
-	        	l('p').text(window.get.reason)\
-	    	end\
-	    </script>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">An Error Occured</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"48\" align=\"center\">Unknown Reason</p>\
-		</center>\
-	</body>\
-</html>",["downloaded.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-		<title>Download Complete</title>\
-	    <script type=\"lua\">\
-	    	if window.get.path then\
-	        	l('p').text('Your file has been saved to ' .. window.get.path .. '. You can now leave this page (use the back button).')\
-	    	end\
-	    </script>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"blue\">Download Complete</h>\
-\
-		<center>\
-			<br>\
-			<p width=\"48\" align=\"center\"></p>\
-		</center>\
-	</body>\
-</html>",["1.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>Failed to Download Page</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">Failed to Download Page</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"38\" align=\"center\">The page you requested failed to download. The page may not exist, the server may be experiencing problems or you have connection issues.</p>\
-		</center>\
-	</body>\
-</html>",["2.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>Doctype Incorrect</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">Doctype Incorrect</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"38\" align=\"center\">This page has an incorrect doctype and can not be rendered. Quest can not view standard web pages.</p>\
-			<br>\
-			<p width=\"38\" align=\"center\" color=\"grey\">If you made this page make sure the file starts with \"&lt;!DOCTYPE ccml&gt;\"</p>\
-		</center>\
-	</body>\
-</html>",["3.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>Failed to Parse Page</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">Failed to Parse Page</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"38\" align=\"center\">The page you requested failed to parse. It is either malformed or your browser is out of date.</p>\
-		</center>\
-	</body>\
-</html>",["4.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>HTTP Not Enabled</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">HTTP Not Enabled</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"38\" align=\"center\">You haven't enabled the HTTP API. To do so, take a look on the HTTP API page on the wiki for a link to a tutorial.</p>\
-		</center>\
-	</body>\
-</html>",["5.ccml"]="<!DOCTYPE ccml>\
-<html>\
-	<head>\
-	  <title>Page Not Whitelisted</title>\
-	</head>\
-	<body>\
-		<br/>\
-		<br/>\
-		<h colour=\"red\">Page Not Whitelisted</h>\
-		<br/>\
-		<center>\
-			<br>\
-			<p width=\"38\" align=\"center\">The page you are trying to open isn't whitelisted. Please take a look on the forums or the wiki as to how to fix this.</p>\
-		</center>\
-	</body>\
-</html>",},["Elements"]={["SecureTextInput.lua"]="Inherit = 'TextInput'\
+end",["Elements"]={["SecureTextInput.lua"]="Inherit = 'TextInput'\
 \
 UpdateValue = function(self)\
 	self.Value = hash.sha256(self.Object.Text)\
@@ -1924,6 +735,17 @@ OnCreateObject = function(self, parentObject, y)\
 		    end\
 		end\
 	}\
+end",["HiddenInput.lua"]="InputName = ''\
+\
+OnInitialise = function(self, node)\
+	local attr = self.Attributes\
+	if attr.value then\
+		self.Value = attr.value\
+	end\
+\
+	if attr.name then\
+		self.InputName = attr.name\
+	end\
 end",["ButtonInput.lua"]="BackgroundColour = colours.lightGrey\
 TextColour = colours.black\
 Text = 'Submit'\
@@ -2216,7 +1038,7 @@ OnCreateObject = function(self, parentObject, y)\
 	}\
 end",["FileInput.lua"]="BackgroundColour = colours.lightGrey\
 TextColour = colours.black\
-Text = 'Choose File'\
+Text = 'Choose File...'\
 InputName = ''\
 FilePath = 'test'\
 \
@@ -2240,10 +1062,8 @@ UpdateValue = function(self, force)\
 		local f = fs.open(self.FilePath, 'r')\
 		if f then\
 			local content = f.readAll()\
-			self.Value = '{\"name\": \"' .. fs.getName(self.FilePath):gsub('\"', '\\\\\"') .. '\", \"content\": \"' .. content:gsub('\"', '\\\\\"') .. '\"}';\
-			h = fs.open('v', 'w')\
-			h.write(self.Value)\
-			h.close()\
+			self.Value = '{\"name\": \"' .. fs.getName(self.FilePath):gsub('\"', '\\\\\"') .. '\", \"content\": \"' .. content:gsub('\"', '\\\\\"') .. '\"}'\
+			f.close()\
 		end\
 	end\
 end\
@@ -2260,15 +1080,13 @@ CreateObject = function(self, parentObject, y)\
 		BackgroundColour = self.BackgroundColour,\
 		InputName = self.InputName,\
 		OnClick = function(_self, event, side, x, y)\
-			local form = self\
-			local step = 0\
-			while form.Tag ~= 'form' and step < 50 do\
-				form = form.Parent\
-			end\
-			self:UpdateValue()\
-			if form and form.Submit then\
-				form:Submit()\
-			end\
+			_self.Bedrock:DisplayOpenFileWindow(nil, function(success, path)\
+				if success then\
+					self.FilePath = path\
+					_self.Text = 'File: '..fs.getName(path)\
+					_self.Align = 'Left'\
+				end\
+			end)\
 		end\
 	})\
 end",["Heading.lua"]="Align = \"Center\"\
@@ -2479,6 +1297,8 @@ GetElementClass = function(self, tag, attr)\
 			return ButtonInput\
 		elseif attr.type == 'file' then\
 			return FileInput\
+		elseif attr.type == 'hidden' then\
+			return HiddenInput\
 		else\
 			return Element\
 		end\
@@ -2618,6 +1438,7 @@ local elements = {\
 	'Form',\
 	'SelectOption',\
 	'ButtonInput',\
+	'HiddenInput',\
 }\
 \
 for i, v in ipairs(elements) do\
@@ -2989,7 +1810,7 @@ program:Run(function()\
 			local url = self.Text\
 			if not url:find('://') then\
 				if url:find(' ') or not url:find('%.') then\
-					url = 'http://thehub.qst/search?q='..textutils.urlEncode(url)\
+					url = 'http://thehub.qst/search.php?q='..textutils.urlEncode(url)\
 				else\
 					url = 'http://' .. url \
 				end\
@@ -3010,11 +1831,11 @@ program:Run(function()\
 			end\
 \
 			program:GetObject('GoHomeMenuItem').OnClick = function(self, event, side, x, y)\
-				program:GetObject('WebView'):GoToURL('http://quest.net76.net/')\
+				goHome()\
 			end\
 \
 			program:GetObject('SetHomeMenuItem').OnClick = function(self, event, side, x, y)\
-				settings.Home = program:GetObject('WebView').URL\
+				settings.Home = program:GetObject('WebView').FakeURL\
 				saveSettings()\
 			end\
 \
@@ -3034,7 +1855,7 @@ program:Run(function()\
 		if url:find('http://') or url:find('https://') then\
 			timeoutTimer = program:StartTimer(function()\
 				program:GetObject('WebView'):Stop()\
-			end, 10)\
+			end, 20)\
 		else\
 			timeoutTimer = program:StartTimer(function()\
 				program:GetObject('WebView'):Stop()\
@@ -3091,208 +1912,7 @@ program:Run(function()\
 	end\
 end)\
 \
-",["Peripheral"]="GetPeripheral = function(_type)\
-	for i, p in ipairs(GetPeripherals()) do\
-		if p.Type == _type then\
-			return p\
-		end\
-	end\
-end\
-\
-Call = function(type, ...)\
-	local tArgs = {...}\
-	local p = GetPeripheral(type)\
-	peripheral.call(p.Side, unpack(tArgs))\
-end\
-\
-local getNames = peripheral.getNames or function()\
-	local tResults = {}\
-	for n,sSide in ipairs( rs.getSides() ) do\
-		if peripheral.isPresent( sSide ) then\
-			table.insert( tResults, sSide )\
-			local isWireless = false\
-			if pcall(function()isWireless = peripheral.call(sSide, 'isWireless') end) then\
-				isWireless = true\
-			end     \
-			if peripheral.getType( sSide ) == \"modem\" and not isWireless then\
-				local tRemote = peripheral.call( sSide, \"getNamesRemote\" )\
-				for n,sName in ipairs( tRemote ) do\
-					table.insert( tResults, sName )\
-				end\
-			end\
-		end\
-	end\
-	return tResults\
-end\
-\
-GetPeripherals = function(filterType)\
-	local peripherals = {}\
-	for i, side in ipairs(getNames()) do\
-		local name = peripheral.getType(side):gsub(\"^%l\", string.upper)\
-		local code = string.upper(side:sub(1,1))\
-		if side:find('_') then\
-			code = side:sub(side:find('_')+1)\
-		end\
-\
-		local dupe = false\
-		for i, v in ipairs(peripherals) do\
-			if v[1] == name .. ' ' .. code then\
-				dupe = true\
-			end\
-		end\
-\
-		if not dupe then\
-			local _type = peripheral.getType(side)\
-			local formattedType = _type:sub(1, 1):upper() .. _type:sub(2, -1)\
-			local isWireless = false\
-			if _type == 'modem' then\
-				if not pcall(function()isWireless = peripheral.call(side, 'isWireless') end) then\
-					isWireless = true\
-				end     \
-				if isWireless then\
-					_type = 'wireless_modem'\
-					formattedType = 'Wireless Modem'\
-					name = 'W '..name\
-				end\
-			end\
-			if not filterType or _type == filterType then\
-				table.insert(peripherals, {Name = name:sub(1,8) .. ' '..code, Fullname = name .. ' ('..side:sub(1, 1):upper() .. side:sub(2, -1)..')', Side = side, Type = _type, Wireless = isWireless, FormattedType = formattedType})\
-			end\
-		end\
-	end\
-	return peripherals\
-end\
-\
-GetSide = function(side)\
-	for i, p in ipairs(GetPeripherals()) do\
-		if p.Side == side then\
-			return p\
-		end\
-	end\
-end\
-\
-PresentNamed = function(name)\
-	return peripheral.isPresent(name)\
-end\
-\
-CallType = function(type, ...)\
-	local tArgs = {...}\
-	local p = GetPeripheral(type)\
-	return peripheral.call(p.Side, unpack(tArgs))\
-end\
-\
-CallNamed = function(name, ...)\
-	local tArgs = {...}\
-	return peripheral.call(name, unpack(tArgs))\
-end\
-\
-GetInfo = function(p)\
-	local info = {}\
-	local buttons = {}\
-	if p.Type == 'computer' then\
-		local id = peripheral.call(p.Side:lower(),'getID')\
-		if id then\
-			info = {\
-				ID = tostring(id)\
-			}\
-		else\
-			info = {}\
-		end\
-	elseif p.Type == 'drive' then\
-		local discType = 'No Disc'\
-		local discID = nil\
-		local mountPath = nil\
-		local discLabel = nil\
-		local songName = nil\
-		if peripheral.call(p.Side:lower(), 'isDiskPresent') then\
-			if peripheral.call(p.Side:lower(), 'hasData') then\
-				discType = 'Data'\
-				discID = peripheral.call(p.Side:lower(), 'getDiskID')\
-				if discID then\
-					discID = tostring(discID)\
-				else\
-					discID = 'None'\
-				end\
-				mountPath = '/'..peripheral.call(p.Side:lower(), 'getMountPath')..'/'\
-				discLabel = peripheral.call(p.Side:lower(), 'getDiskLabel')\
-			else\
-				discType = 'Audio'\
-				songName = peripheral.call(p.Side:lower(), 'getAudioTitle')\
-			end\
-		end\
-		if mountPath then\
-			table.insert(buttons, {Text = 'View Files', OnClick = function(self, event, side, x, y)GoToPath(mountPath)end})\
-		elseif discType == 'Audio' then\
-			table.insert(buttons, {Text = 'Play', OnClick = function(self, event, side, x, y)\
-				if self.Text == 'Play' then\
-					disk.playAudio(p.Side:lower())\
-					self.Text = 'Stop'\
-				else\
-					disk.stopAudio(p.Side:lower())\
-					self.Text = 'Play'\
-				end\
-			end})\
-		else\
-			diskOpenButton = nil\
-		end\
-		if discType ~= 'No Disc' then\
-			table.insert(buttons, {Text = 'Eject', OnClick = function(self, event, side, x, y)disk.eject(p.Side:lower()) sleep(0) RefreshFiles() end})\
-		end\
-\
-		info = {\
-			['Disc Type'] = discType,\
-			['Disc Label'] = discLabel,\
-			['Song Title'] = songName,\
-			['Disc ID'] = discID,\
-			['Mount Path'] = mountPath\
-		}\
-	elseif p.Type == 'printer' then\
-		local pageSize = 'No Loaded Page'\
-		local _, err = pcall(function() return tostring(peripheral.call(p.Side:lower(), 'getPgaeSize')) end)\
-		if not err then\
-			pageSize = tostring(peripheral.call(p.Side:lower(), 'getPageSize'))\
-		end\
-		info = {\
-			['Paper Level'] = tostring(peripheral.call(p.Side:lower(), 'getPaperLevel')),\
-			['Paper Size'] = pageSize,\
-			['Ink Level'] = tostring(peripheral.call(p.Side:lower(), 'getInkLevel'))\
-		}\
-	elseif p.Type == 'modem' then\
-		info = {\
-			['Connected Peripherals'] = tostring(#peripheral.call(p.Side:lower(), 'getNamesRemote'))\
-		}\
-	elseif p.Type == 'monitor' then\
-		local w, h = peripheral.call(p.Side:lower(), 'getSize')\
-		local screenType = 'Black and White'\
-		if peripheral.call(p.Side:lower(), 'isColour') then\
-			screenType = 'Colour'\
-		end\
-		local buttonTitle = 'Use as Screen'\
-		if OneOS.Settings:GetValues()['Monitor'] == p.Side:lower() then\
-			buttonTitle = 'Use Computer Screen'\
-		end\
-		table.insert(buttons, {Text = buttonTitle, OnClick = function(self, event, side, x, y)\
-				self.Bedrock:DisplayAlertWindow('Reboot Required', \"To change screen you'll need to reboot your computer.\", {'Reboot', 'Cancel'}, function(value)\
-					if value == 'Reboot' then\
-						if buttonTitle == 'Use Computer Screen' then\
-							OneOS.Settings:SetValue('Monitor', nil)\
-						else\
-							OneOS.Settings:SetValue('Monitor', p.Side:lower())\
-						end\
-						OneOS.Reboot()\
-					end\
-				end)\
-			end\
-		})\
-		info = {\
-			['Type'] = screenType,\
-			['Width'] = tostring(w),\
-			['Height'] = tostring(h),\
-		}\
-	end\
-	info.Buttons = buttons\
-	return info\
-end",["Bedrock"]="--Bedrock Build: 193\
+",["Bedrock"]="--Bedrock Build: 262\
 --This code is squished down in to one, rather hard to read file.\
 --As such it is not much good for anything other than being loaded as an API.\
 --If you want to look at the code to learn from it, copy parts or just take a look,\
@@ -4242,10 +2862,9 @@ local function AddItem(self, v, x, y, group)\
 		[\"Group\"]=group,\
 		OnClick = function(itm)\
 			if self.CanSelect then\
-				for i2, _v in ipairs(self.Children) do\
-					_v.Toggle = false\
-				end\
-				self.Selected = itm\
+				self:SelectItem(itm)\
+			elseif self.OnSelect then\
+				self:OnSelect(itm.Text)\
 			end\
 		end\
     }\
@@ -4259,7 +2878,7 @@ local function AddItem(self, v, x, y, group)\
 	\
 	local itm = self:AddObject(item)\
 	if v.Selected then\
-		self.Selected = itm\
+		self:SelectItem(itm)\
 	end\
 end\
 \
@@ -4346,6 +2965,9 @@ SelectItem = function(self, item)\
 	end\
 	self.Selected = item\
 	item.Toggle = true\
+	if self.OnSelect then\
+		self:OnSelect(item.Text)\
+	end\
 end\
 \
 OnUpdate = function(self, value)\
@@ -5813,6 +4435,163 @@ function DisplayTextBoxWindow(self, title, text, callback, textboxText, cursorAt
 	self.Window.OnCloseButton = function()callback(false)end\
 end\
 \
+function DisplayOpenFileWindow(self, title, callback)\
+	title = title or 'Open File'\
+	local func = function(btn)\
+		self.Window:Close()\
+		if callback then\
+			callback(btn.Text)\
+		end\
+	end\
+\
+	local sidebarItems = {}\
+\
+	--this is a really, really super bad way of doing it\
+	local separator = '                               !'\
+\
+	local function addFolder(path, level)\
+		for i, v in ipairs(fs.list(path)) do\
+			local fPath = path .. '/' .. v\
+			if fPath ~= '/rom' and fs.isDir(fPath) then\
+				table.insert(sidebarItems, level .. v..separator..fPath)\
+				addFolder(fPath, level .. '  ')\
+			end\
+		end\
+	end\
+	addFolder('','')\
+\
+	local currentFolder = ''\
+	local selectedPath = nil\
+\
+	local goToFolder = nil\
+\
+	local children = {\
+		{\
+			[\"Y\"]=\"100%,-2\",\
+			[\"X\"]=1,\
+			[\"Height\"]=3,\
+			[\"Width\"]=\"100%\",\
+			[\"BackgroundColour\"]=colours.lightGrey,\
+			[\"Name\"]=\"SidebarListView\",\
+			[\"Type\"]=\"View\"\
+		},\
+		{\
+			[\"Y\"]=\"100%,-1\",\
+			[\"X\"]=\"100%,-4\",\
+			[\"Name\"]=\"OkButton\",\
+			[\"Type\"]=\"Button\",\
+			[\"Text\"]=\"Ok\",\
+			[\"BackgroundColour\"]=colours.white,\
+			[\"Enabled\"]=false,\
+			OnClick = function()\
+				if selectedPath then\
+					self.Window:Close()\
+					callback(true, Helpers.TidyPath(selectedPath))\
+				end\
+			end\
+		},\
+		{\
+			[\"Y\"]=\"100%,-1\",\
+			[\"X\"]=\"100%,-13\",\
+			[\"Name\"]=\"CancelButton\",\
+			[\"Type\"]=\"Button\",\
+			[\"Text\"]=\"Cancel\",\
+			[\"BackgroundColour\"]=colours.white,\
+			OnClick = function()\
+				self.Window:Close()\
+				callback(false)\
+			end\
+		},\
+		{\
+			[\"Y\"]=1,\
+			[\"X\"]=1,\
+			[\"Height\"]=\"100%,-3\",\
+			[\"Width\"]=\"40%,-1\",\
+			[\"Name\"]=\"SidebarListView\",\
+			[\"Type\"]=\"ListView\",\
+			[\"CanSelect\"]=true,\
+			[\"Items\"]={\
+				[\"Computer\"] = sidebarItems\
+			},\
+			OnSelect = function(listView, text)\
+				local _,s = text:find(separator)\
+				if s then\
+					local path = text:sub(s + 1)\
+					goToFolder(path)\
+				end\
+			end,\
+			OnClick = function(listView, event, side, x, y)\
+				if y == 1 then\
+					goToFolder('/')\
+				end\
+			end\
+		},\
+		{\
+			[\"Y\"]=1,\
+			[\"X\"]=\"40%\",\
+			[\"Height\"]=\"100%,-3\",\
+			[\"Width\"]=1,\
+			[\"Type\"]=\"Separator\"\
+		},\
+		{\
+			[\"Y\"]=1,\
+			[\"X\"]=\"40%,2\",\
+			[\"Width\"]=\"65%,-3\",\
+			[\"Height\"]=1,\
+			[\"Type\"]=\"Label\",\
+			[\"Name\"]=\"PathLabel\",\
+			[\"TextColour\"]=colours.lightGrey,\
+			[\"Text\"]='/hello/there'\
+		},\
+		{\
+			[\"Y\"]=2,\
+			[\"X\"]=\"40%,1\",\
+			[\"Height\"]=\"100%,-4\",\
+			[\"Width\"]=\"65%,-1\",\
+			[\"Name\"]=\"FilesListView\",\
+			[\"Type\"]=\"ListView\",\
+			[\"CanSelect\"]=true,\
+			[\"Items\"]={},\
+			OnSelect = function(listView, text)\
+				selectedPath = Helpers.TidyPath(currentFolder .. '/' .. text)\
+				self.Window:GetObject('OkButton').Enabled = true\
+			end,\
+			OnClick = function(listView, event, side, x, y)\
+				if y == 1 then\
+					goToFolder('/')\
+				end\
+			end\
+		},\
+	}\
+	local view = {\
+		Children = children,\
+		Width=40,\
+		Height= Drawing.Screen.Height - 4\
+	}\
+	self:DisplayWindow(view, title)\
+\
+	goToFolder = function(path)\
+		path = Helpers.TidyPath(path)\
+		self.Window:GetObject('PathLabel').Text = path\
+		currentFolder = path\
+\
+		local filesListItems = {}\
+		for i, v in ipairs(fs.list(path)) do\
+			if not fs.isDir(currentFolder .. v) then\
+				table.insert(filesListItems, v)\
+			end\
+		end\
+		self.Window:GetObject('OkButton').Enabled = false\
+		selectedPath = nil\
+		self.Window:GetObject('FilesListView').Items = filesListItems\
+\
+	end\
+\
+	goToFolder('')\
+\
+	self.Window.OnCloseButton = function()callback(false)end\
+end\
+\
 function RegisterEvent(self, event, func)\
 	if not self.EventHandlers[event] then\
 		self.EventHandlers[event] = {}\
@@ -5981,176 +4760,399 @@ end",[".gitignore"]=".DS_Store\
 \
 Desktop/.Desktop.settings\
 \
-.version",["r"]="os.reboot()",["index.html"]="<!DOCTYPE ccml>\
-<html>\
+.version",["hash"]="--\
+--  Thanks to GravityScore for this!\
+--  http://www.computercraft.info/forums2/index.php?/topic/8169-sha-256-in-pure-lua/\
+--\
+--  This is used to hash passwords sent with the secure text field. It just reduces the chance of people getting hacked.\
+--\
 \
-<head>\
-    <title>Home</title>\
-    <script type=\"lua\"> -- note, this is actually line 1\
-        l('p').text(os.version())\
-        local testValue = 'one'\
-        secondValue = 'two'\
-        l('p').text(testValue)\
-    </script>\
+--  \
+--  Adaptation of the Secure Hashing Algorithm (SHA-244/256)\
+--  Found Here: http://lua-users.org/wiki/SecureHashAlgorithm\
+--  \
+--  Using an adapted version of the bit library\
+--  Found Here: https://bitbucket.org/Boolsheet/bslf/src/1ee664885805/bit.lua\
+--  \
 \
-    <script type=\"lua\">\
-        l('h').text(testValue) -- testValue is nil\
-        -- second value is 'two'\
-    </script>\
-</head>\
+local MOD = 2^32\
+local MODM = MOD-1\
 \
-<body bgcolour=\"grey\">\
-    <div bgcolour=\"white\">\
-        <br/>\
-        <center>\
-            <float width=\"30\">\
-                <div width=\"1\"></div>\
-                <a href=\"index.html\" align=\"center\" width=\"6\">Home</a>\
-                <a href=\"test.html\" align=\"center\" width=\"6\">Time</a>\
-                <a href=\"form.php\" align=\"center\" width=\"7\">Forms</a>\
-            </float>\
-        </center>\
-        <br/>\
-    </div>\
-    <div bgcolour=\"grey\" height=\"2\"></div>\
-    <center bgcolour=\"green\">\
-        <div bgcolour=\"white\" width=\"40\">\
-            <br/>\
-            <h>Home</h>\
-            <br/>\
-            <center>\
-                <p width=\"34\">Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim adminim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl utaliquip ex ea commodo consequat.</p>\
-            </center>\
-            <br/>\
-        </div>\
-    </center>\
-</body>\
+local function memoize(f)\
+	local mt = {}\
+	local t = setmetatable({}, mt)\
+	function mt:__index(k)\
+		local v = f(k)\
+		t[k] = v\
+		return v\
+	end\
+	return t\
+end\
 \
-</html>",["Wireless"]="--This is just the OneOS Wireless API\
+local function make_bitop_uncached(t, m)\
+	local function bitop(a, b)\
+		local res,p = 0,1\
+		while a ~= 0 and b ~= 0 do\
+			local am, bm = a % m, b % m\
+			res = res + t[am][bm] * p\
+			a = (a - am) / m\
+			b = (b - bm) / m\
+			p = p*m\
+		end\
+		res = res + (a + b) * p\
+		return res\
+	end\
+	return bitop\
+end\
 \
---OneOS uses channels between 4200 and 4300, avoid use where possible\
+local function make_bitop(t)\
+	local op1 = make_bitop_uncached(t,2^1)\
+	local op2 = memoize(function(a) return memoize(function(b) return op1(a, b) end) end)\
+	return make_bitop_uncached(op2, 2 ^ (t.n or 1))\
+end\
 \
-Channels = {\
-	Ignored = 4299,\
-	Ping = 4200,\
-	PingReply = 4201,\
-	QuestServerRequest = 4250,\
-	QuestServerRequestReply = 4251,\
-	QuestServerNameAvailable = 4252,\
-	QuestServerNameAvailableReply = 4253,\
+local bxor1 = make_bitop({[0] = {[0] = 0,[1] = 1}, [1] = {[0] = 1, [1] = 0}, n = 4})\
+\
+local function bxor(a, b, c, ...)\
+	local z = nil\
+	if b then\
+		a = a % MOD\
+		b = b % MOD\
+		z = bxor1(a, b)\
+		if c then z = bxor(z, c, ...) end\
+		return z\
+	elseif a then return a % MOD\
+	else return 0 end\
+end\
+\
+local function band(a, b, c, ...)\
+	local z\
+	if b then\
+		a = a % MOD\
+		b = b % MOD\
+		z = ((a + b) - bxor1(a,b)) / 2\
+		if c then z = bit32_band(z, c, ...) end\
+		return z\
+	elseif a then return a % MOD\
+	else return MODM end\
+end\
+\
+local function bnot(x) return (-1 - x) % MOD end\
+\
+local function rshift1(a, disp)\
+	if disp < 0 then return lshift(a,-disp) end\
+	return math.floor(a % 2 ^ 32 / 2 ^ disp)\
+end\
+\
+local function rshift(x, disp)\
+	if disp > 31 or disp < -31 then return 0 end\
+	return rshift1(x % MOD, disp)\
+end\
+\
+local function lshift(a, disp)\
+	if disp < 0 then return rshift(a,-disp) end \
+	return (a * 2 ^ disp) % 2 ^ 32\
+end\
+\
+local function rrotate(x, disp)\
+    x = x % MOD\
+    disp = disp % 32\
+    local low = band(x, 2 ^ disp - 1)\
+    return rshift(x, disp) + lshift(low, 32 - disp)\
+end\
+\
+local k = {\
+	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,\
+	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,\
+	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,\
+	0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\
+	0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,\
+	0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,\
+	0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,\
+	0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\
+	0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,\
+	0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,\
+	0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,\
+	0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\
+	0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,\
+	0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,\
+	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,\
+	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,\
 }\
 \
-local function isOpen(channel)\
-	return Peripheral.CallType('wireless_modem', 'isOpen', channel)\
+local function str2hexa(s)\
+	return (string.gsub(s, \".\", function(c) return string.format(\"%02x\", string.byte(c)) end))\
 end\
 \
-local function open(channel)\
-	if not isOpen(channel) then\
-		Peripheral.CallType('wireless_modem', 'open', channel)\
+local function num2s(l, n)\
+	local s = \"\"\
+	for i = 1, n do\
+		local rem = l % 256\
+		s = string.char(rem) .. s\
+		l = (l - rem) / 256\
 	end\
+	return s\
 end\
 \
-Open = open\
-\
-local function close(channel)\
-	Peripheral.CallType('wireless_modem', 'close', channel)\
+local function s232num(s, i)\
+	local n = 0\
+	for i = i, i + 3 do n = n*256 + string.byte(s, i) end\
+	return n\
 end\
 \
-local function closeAll()\
-	Peripheral.CallType('wireless_modem', 'closeAll')\
+local function preproc(msg, len)\
+	local extra = 64 - ((len + 9) % 64)\
+	len = num2s(8 * len, 8)\
+	msg = msg .. \"\\128\" .. string.rep(\"\\0\", extra) .. len\
+	assert(#msg % 64 == 0)\
+	return msg\
 end\
 \
-local function transmit(channel, replyChannel, message)\
-	Peripheral.CallType('wireless_modem', 'transmit', channel, replyChannel, textutils.serialize(message))\
+local function initH256(H)\
+	H[1] = 0x6a09e667\
+	H[2] = 0xbb67ae85\
+	H[3] = 0x3c6ef372\
+	H[4] = 0xa54ff53a\
+	H[5] = 0x510e527f\
+	H[6] = 0x9b05688c\
+	H[7] = 0x1f83d9ab\
+	H[8] = 0x5be0cd19\
+	return H\
 end\
 \
-function Present()\
-	if Peripheral.GetPeripheral('wireless_modem') == nil then\
-		return false\
-	else\
-		return true\
+local function digestblock(msg, i, H)\
+	local w = {}\
+	for j = 1, 16 do w[j] = s232num(msg, i + (j - 1)*4) end\
+	for j = 17, 64 do\
+		local v = w[j - 15]\
+		local s0 = bxor(rrotate(v, 7), rrotate(v, 18), rshift(v, 3))\
+		v = w[j - 2]\
+		w[j] = w[j - 16] + s0 + w[j - 7] + bxor(rrotate(v, 17), rrotate(v, 19), rshift(v, 10))\
 	end\
-end\
 \
-local function FormatMessage(message, messageID, destinationID)\
-	return {\
-		content = textutils.serialize(message),\
-		senderID = os.getComputerID(),\
-		senderName = os.getComputerLabel(),\
-		channel = channel,\
-		replyChannel = reply,\
-		messageID = messageID or math.random(10000),\
-		destinationID = destinationID\
-	}\
-end\
-\
-local Timeout = function(func, time)\
-	time = time or 1\
-	parallel.waitForAny(func, function()\
-		sleep(time)\
-		--log('Timeout!'..time)\
-	end)\
-end\
-\
-RecieveMessage = function(_channel, messageID, timeout)\
-	open(_channel)\
-	local done = false\
-	local event, side, channel, replyChannel, message = nil\
-	Timeout(function()\
-		while not done do\
-			event, side, channel, replyChannel, message = os.pullEvent('modem_message')\
-			if channel ~= _channel then\
-				event, side, channel, replyChannel, message = nil\
-			else\
-				message = textutils.unserialize(message)\
-				message.content = textutils.unserialize(message.content)\
-				if messageID and messageID ~= message.messageID or (message.destinationID ~= nil and message.destinationID ~= os.getComputerID()) then\
-					event, side, channel, replyChannel, message = nil\
-				else\
-					done = true\
-				end\
-			end\
-		end\
-	end,\
-	timeout)\
-	return event, side, channel, replyChannel, message\
-end\
-\
-Initialise = function()\
-	if Present() then\
-		for i, c in pairs(Channels) do\
-			open(c)\
-		end\
+	local a, b, c, d, e, f, g, h = H[1], H[2], H[3], H[4], H[5], H[6], H[7], H[8]\
+	for i = 1, 64 do\
+		local s0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))\
+		local maj = bxor(band(a, b), band(a, c), band(b, c))\
+		local t2 = s0 + maj\
+		local s1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))\
+		local ch = bxor (band(e, f), band(bnot(e), g))\
+		local t1 = h + s1 + ch + k[i] + w[i]\
+		h, g, f, e, d, c, b, a = g, f, e, d + t1, c, b, a, t1 + t2\
 	end\
+\
+	H[1] = band(H[1] + a)\
+	H[2] = band(H[2] + b)\
+	H[3] = band(H[3] + c)\
+	H[4] = band(H[4] + d)\
+	H[5] = band(H[5] + e)\
+	H[6] = band(H[6] + f)\
+	H[7] = band(H[7] + g)\
+	H[8] = band(H[8] + h)\
 end\
 \
-HandleMessage = function(event, side, channel, replyChannel, message, distance)\
-	message = textutils.unserialize(message)\
-	message.content = textutils.unserialize(message.content)\
+function sha256(msg)\
+	msg = preproc(msg, #msg)\
+	local H = initH256({})\
+	for i = 1, #msg, 64 do digestblock(msg, i, H) end\
+	return str2hexa(num2s(H[1], 4) .. num2s(H[2], 4) .. num2s(H[3], 4) .. num2s(H[4], 4) ..\
+		num2s(H[5], 4) .. num2s(H[6], 4) .. num2s(H[7], 4) .. num2s(H[8], 4))\
+end",["Pages"]={["404.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>Page Not Found</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">404 Page Not Found</h>\
+		<br/>\
+		<center>\
+			<p width=\"38\" align=\"center\">The page was not found on the server. Check the address and try again.</p>\
+		</center>\
+	</body>\
+</html>",["6.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>Download Failed</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">Download Failed</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"38\" align=\"center\">The file you wanted failed to download. Try again or contact the file owner.</p>\
+		</center>\
+	</body>\
+</html>",["7.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>No Modem Connected</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">No Modem Connected</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"38\" align=\"center\">Please attach a wirelss modem and restart Quest.</p>\
+		</center>\
+	</body>\
+</html>",["download.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+		<title>Downloading File</title>\
+	    <script type=\"lua\">\
+	    	if window.get.path then\
+	        	l('p').text('Quest is downloading your file to ' .. window.get.path .. '. Please wait a moment. Leaving this page will cancel the download.')\
+	    	end\
+	    </script>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"blue\">Downloading File</h>\
 \
-	if channel == Channels.Ping then\
-		if message.content == 'Ping!' then\
-			SendMessage(replyChannel, 'Pong!', nil, message.messageID)\
-		end\
-	elseif message.destinationID ~= nil and message.destinationID ~= os.getComputerID() then\
-	elseif Wireless.Responder then\
-		Wireless.Responder(event, side, channel, replyChannel, message, distance)\
-	end\
-end\
+		<center>\
+			<br>\
+			<p width=\"48\" align=\"center\"></p>\
+		</center>\
+	</body>\
+</html>",["408.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>Page Not Found</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">Page Load Cancelled</h>\
+		<br/>\
+		<center>\
+			<p width=\"38\" align=\"center\">The page either took too long to load or you cancelled loading it.</p>\
+		</center>\
+	</body>\
+</html>",["text.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+		<title>An Error Occured</title>\
+	    <script type=\"lua\">\
+	    	if window.get.reason then\
+	        	l('p').text(window.get.reason)\
+	    	end\
+	    </script>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">An Error Occured</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"48\" align=\"center\">Unknown Reason</p>\
+		</center>\
+	</body>\
+</html>",["downloaded.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+		<title>Download Complete</title>\
+	    <script type=\"lua\">\
+	    	if window.get.path then\
+	        	l('p').text('Your file has been saved to ' .. window.get.path .. '. You can now leave this page (use the back button).')\
+	    	end\
+	    </script>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"blue\">Download Complete</h>\
 \
-SendMessage = function(channel, message, reply, messageID, destinationID)\
-	reply = reply or channel + 1\
-	open(channel)\
-	open(reply)\
-	local _message = FormatMessage(message, messageID, destinationID)\
-	transmit(channel, reply, _message)\
-	return _message\
-end\
-\
-Ping = function()\
-	local message = SendMessage(Channels.Ping, 'Ping!', Channels.PingReply)\
-	RecieveMessage(Channels.PingReply, message.messageID)\
-end",["lQuery"]="function fn(selector)\
+		<center>\
+			<br>\
+			<p width=\"48\" align=\"center\"></p>\
+		</center>\
+	</body>\
+</html>",["1.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>Failed to Download Page</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">Failed to Download Page</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"38\" align=\"center\">The page you requested failed to download. The page may not exist, the server may be experiencing problems or you have connection issues.</p>\
+		</center>\
+	</body>\
+</html>",["2.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>Doctype Incorrect</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">Doctype Incorrect</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"38\" align=\"center\">This page has an incorrect doctype and can not be rendered. Quest can not view standard web pages.</p>\
+			<br>\
+			<p width=\"38\" align=\"center\" color=\"grey\">If you made this page make sure the file starts with \"&lt;!DOCTYPE ccml&gt;\"</p>\
+		</center>\
+	</body>\
+</html>",["3.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>Failed to Parse Page</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">Failed to Parse Page</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"38\" align=\"center\">The page you requested failed to parse. It is either malformed or your browser is out of date.</p>\
+		</center>\
+	</body>\
+</html>",["4.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>HTTP Not Enabled</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">HTTP Not Enabled</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"38\" align=\"center\">You haven't enabled the HTTP API. To do so, take a look on the HTTP API page on the wiki for a link to a tutorial.</p>\
+		</center>\
+	</body>\
+</html>",["5.ccml"]="<!DOCTYPE ccml>\
+<html>\
+	<head>\
+	  <title>Page Not Whitelisted</title>\
+	</head>\
+	<body>\
+		<br/>\
+		<br/>\
+		<h colour=\"red\">Page Not Whitelisted</h>\
+		<br/>\
+		<center>\
+			<br>\
+			<p width=\"38\" align=\"center\">The page you are trying to open isn't whitelisted. Please take a look on the forums or the wiki as to how to fix this.</p>\
+		</center>\
+	</body>\
+</html>",},["lQuery"]="function fn(selector)\
 	if not selector then\
 	else\
 		local elements = lQuery.webView:ResolveElements(selector)\
@@ -6250,7 +5252,1129 @@ end",["lQuery"]="function fn(selector)\
 			return response\
 		end\
 	end\
-end",}
+end",["Peripheral"]="GetPeripheral = function(_type)\
+	for i, p in ipairs(GetPeripherals()) do\
+		if p.Type == _type then\
+			return p\
+		end\
+	end\
+end\
+\
+Call = function(type, ...)\
+	local tArgs = {...}\
+	local p = GetPeripheral(type)\
+	peripheral.call(p.Side, unpack(tArgs))\
+end\
+\
+local getNames = peripheral.getNames or function()\
+	local tResults = {}\
+	for n,sSide in ipairs( rs.getSides() ) do\
+		if peripheral.isPresent( sSide ) then\
+			table.insert( tResults, sSide )\
+			local isWireless = false\
+			if pcall(function()isWireless = peripheral.call(sSide, 'isWireless') end) then\
+				isWireless = true\
+			end     \
+			if peripheral.getType( sSide ) == \"modem\" and not isWireless then\
+				local tRemote = peripheral.call( sSide, \"getNamesRemote\" )\
+				for n,sName in ipairs( tRemote ) do\
+					table.insert( tResults, sName )\
+				end\
+			end\
+		end\
+	end\
+	return tResults\
+end\
+\
+GetPeripherals = function(filterType)\
+	local peripherals = {}\
+	for i, side in ipairs(getNames()) do\
+		local name = peripheral.getType(side):gsub(\"^%l\", string.upper)\
+		local code = string.upper(side:sub(1,1))\
+		if side:find('_') then\
+			code = side:sub(side:find('_')+1)\
+		end\
+\
+		local dupe = false\
+		for i, v in ipairs(peripherals) do\
+			if v[1] == name .. ' ' .. code then\
+				dupe = true\
+			end\
+		end\
+\
+		if not dupe then\
+			local _type = peripheral.getType(side)\
+			local formattedType = _type:sub(1, 1):upper() .. _type:sub(2, -1)\
+			local isWireless = false\
+			if _type == 'modem' then\
+				if not pcall(function()isWireless = peripheral.call(side, 'isWireless') end) then\
+					isWireless = true\
+				end     \
+				if isWireless then\
+					_type = 'wireless_modem'\
+					formattedType = 'Wireless Modem'\
+					name = 'W '..name\
+				end\
+			end\
+			if not filterType or _type == filterType then\
+				table.insert(peripherals, {Name = name:sub(1,8) .. ' '..code, Fullname = name .. ' ('..side:sub(1, 1):upper() .. side:sub(2, -1)..')', Side = side, Type = _type, Wireless = isWireless, FormattedType = formattedType})\
+			end\
+		end\
+	end\
+	return peripherals\
+end\
+\
+GetSide = function(side)\
+	for i, p in ipairs(GetPeripherals()) do\
+		if p.Side == side then\
+			return p\
+		end\
+	end\
+end\
+\
+PresentNamed = function(name)\
+	return peripheral.isPresent(name)\
+end\
+\
+CallType = function(type, ...)\
+	local tArgs = {...}\
+	local p = GetPeripheral(type)\
+	return peripheral.call(p.Side, unpack(tArgs))\
+end\
+\
+CallNamed = function(name, ...)\
+	local tArgs = {...}\
+	return peripheral.call(name, unpack(tArgs))\
+end\
+\
+GetInfo = function(p)\
+	local info = {}\
+	local buttons = {}\
+	if p.Type == 'computer' then\
+		local id = peripheral.call(p.Side:lower(),'getID')\
+		if id then\
+			info = {\
+				ID = tostring(id)\
+			}\
+		else\
+			info = {}\
+		end\
+	elseif p.Type == 'drive' then\
+		local discType = 'No Disc'\
+		local discID = nil\
+		local mountPath = nil\
+		local discLabel = nil\
+		local songName = nil\
+		if peripheral.call(p.Side:lower(), 'isDiskPresent') then\
+			if peripheral.call(p.Side:lower(), 'hasData') then\
+				discType = 'Data'\
+				discID = peripheral.call(p.Side:lower(), 'getDiskID')\
+				if discID then\
+					discID = tostring(discID)\
+				else\
+					discID = 'None'\
+				end\
+				mountPath = '/'..peripheral.call(p.Side:lower(), 'getMountPath')..'/'\
+				discLabel = peripheral.call(p.Side:lower(), 'getDiskLabel')\
+			else\
+				discType = 'Audio'\
+				songName = peripheral.call(p.Side:lower(), 'getAudioTitle')\
+			end\
+		end\
+		if mountPath then\
+			table.insert(buttons, {Text = 'View Files', OnClick = function(self, event, side, x, y)GoToPath(mountPath)end})\
+		elseif discType == 'Audio' then\
+			table.insert(buttons, {Text = 'Play', OnClick = function(self, event, side, x, y)\
+				if self.Text == 'Play' then\
+					disk.playAudio(p.Side:lower())\
+					self.Text = 'Stop'\
+				else\
+					disk.stopAudio(p.Side:lower())\
+					self.Text = 'Play'\
+				end\
+			end})\
+		else\
+			diskOpenButton = nil\
+		end\
+		if discType ~= 'No Disc' then\
+			table.insert(buttons, {Text = 'Eject', OnClick = function(self, event, side, x, y)disk.eject(p.Side:lower()) sleep(0) RefreshFiles() end})\
+		end\
+\
+		info = {\
+			['Disc Type'] = discType,\
+			['Disc Label'] = discLabel,\
+			['Song Title'] = songName,\
+			['Disc ID'] = discID,\
+			['Mount Path'] = mountPath\
+		}\
+	elseif p.Type == 'printer' then\
+		local pageSize = 'No Loaded Page'\
+		local _, err = pcall(function() return tostring(peripheral.call(p.Side:lower(), 'getPgaeSize')) end)\
+		if not err then\
+			pageSize = tostring(peripheral.call(p.Side:lower(), 'getPageSize'))\
+		end\
+		info = {\
+			['Paper Level'] = tostring(peripheral.call(p.Side:lower(), 'getPaperLevel')),\
+			['Paper Size'] = pageSize,\
+			['Ink Level'] = tostring(peripheral.call(p.Side:lower(), 'getInkLevel'))\
+		}\
+	elseif p.Type == 'modem' then\
+		info = {\
+			['Connected Peripherals'] = tostring(#peripheral.call(p.Side:lower(), 'getNamesRemote'))\
+		}\
+	elseif p.Type == 'monitor' then\
+		local w, h = peripheral.call(p.Side:lower(), 'getSize')\
+		local screenType = 'Black and White'\
+		if peripheral.call(p.Side:lower(), 'isColour') then\
+			screenType = 'Colour'\
+		end\
+		local buttonTitle = 'Use as Screen'\
+		if OneOS.Settings:GetValues()['Monitor'] == p.Side:lower() then\
+			buttonTitle = 'Use Computer Screen'\
+		end\
+		table.insert(buttons, {Text = buttonTitle, OnClick = function(self, event, side, x, y)\
+				self.Bedrock:DisplayAlertWindow('Reboot Required', \"To change screen you'll need to reboot your computer.\", {'Reboot', 'Cancel'}, function(value)\
+					if value == 'Reboot' then\
+						if buttonTitle == 'Use Computer Screen' then\
+							OneOS.Settings:SetValue('Monitor', nil)\
+						else\
+							OneOS.Settings:SetValue('Monitor', p.Side:lower())\
+						end\
+						OneOS.Reboot()\
+					end\
+				end)\
+			end\
+		})\
+		info = {\
+			['Type'] = screenType,\
+			['Width'] = tostring(w),\
+			['Height'] = tostring(h),\
+		}\
+	end\
+	info.Buttons = buttons\
+	return info\
+end",["Objects"]={["HeadingView.lua"]="Inherit = 'View'\
+Height = 3\
+\
+OnLoad = function(self)\
+	self:OnUpdate('Text')\
+end\
+\
+OnUpdate = function(self, value)\
+	if value == 'Text' then\
+		self:RemoveAllObjects()\
+		self:AddObject({\
+			Y = 1,\
+			X = 1,\
+			Width = \"100%\",\
+			Align = \"Center\",\
+			Type = \"Label\",\
+			Text = self.Text,\
+			TextColour = self.TextColour,\
+			BackgroundColour = self.BackgroundColour\
+		})\
+\
+		local underline = ''\
+		for i = 1, #self.Text + 2 do\
+			underline = underline .. '='\
+		end\
+		self:AddObject({\
+			Y = 2,\
+			X = 1,\
+			Width = \"100%\",\
+			Align = \"Center\",\
+			Type = \"Label\",\
+			Text = underline,\
+			TextColour = self.TextColour,\
+			BackgroundColour = self.BackgroundColour\
+		})\
+	end\
+end",["WebImageView.lua"]="URL = false\
+Image = false\
+\
+OnDraw = function(self, x, y)\
+	if not self.Image then\
+		Drawing.DrawBlankArea(x, y, self.Width, self.Height, colours.lightGrey)\
+	elseif self.Format == 'nft' then\
+		Drawing.DrawImage(x, y, self.Image, self.Width, self.Height)\
+	elseif self.Format == 'nfp' or self.Format == 'paint' then\
+		for _x, col in ipairs(self.Image) do\
+			for _y, colour in ipairs(col) do\
+	            Drawing.WriteToBuffer(x+_x-1, y+_y-1, ' ', colours.white, colour)\
+			end\
+		end\
+	elseif self.Format == 'skch' or self.Format == 'sketch' then\
+		Drawing.DrawImage(x, y, self.Image, self.Width, self.Height)\
+	end\
+end\
+\
+OnUpdate = function(self, value)\
+	if value == 'URL' and self.URL then\
+		fetchHTTPAsync(resolveFullUrl(self.URL), function(ok, event, response)\
+			if ok then\
+				local width, height = self.Width, self.Height\
+\
+				local lines = {}\
+				for line in response.readLine do\
+					table.insert(lines, line)\
+				end\
+				response.close()\
+				local content = table.concat(lines, '\\n')\
+\
+				if not self.Format then\
+					self.Format = self:DetermineFormat(content)\
+				end\
+\
+				if self.Format == 'nft' then\
+					self.Image, self.Width, self.Height = self:ReadNFT(lines)\
+				elseif self.Format == 'nfp' or self.Format == 'paint' then\
+					self.Image, self.Width, self.Height = self:ReadNFP(lines)\
+				elseif self.Format == 'skch' or self.Format == 'sketch' then\
+					self.Image, self.Width, self.Height = self:ReadSKCH(content)\
+				end\
+				if (width ~= self.Width or height ~= self.Height) then\
+					self.Bedrock:GetObject('WebView'):RepositionLayout()\
+				end\
+			end\
+		end)\
+	end\
+end\
+\
+DetermineFormat = function(self, content)\
+	if type(textutils.unserialize(content)) == 'table' then\
+		-- It's a serlized table, asume sketch\
+		return 'skch'\
+	elseif string.find(content, string.char(30)) or string.find(content, string.char(31)) then\
+		-- Contains the characters that set colours, asume nft\
+		return 'nft'\
+	else\
+		-- Otherwise asume nfp\
+		return 'nfp'\
+	end\
+end\
+\
+ReadSKCH = function(self, content)\
+	local _layers = textutils.unserialize(content)\
+	local layers = {}\
+\
+	local width, height = 1, 1\
+\
+	for i, layer in ipairs(_layers) do\
+		if layer.Visible then\
+			local nft, w, h = self:ReadNFT(layer.Pixels)\
+			if w > width then\
+				width = w\
+			end\
+			if h > height then\
+				height = h\
+			end\
+			table.insert(layers, nft)\
+		end\
+	end\
+\
+	--flatten the layers\
+	local image = {\
+		text = {},\
+		textcol = {}\
+	}\
+\
+	for i, layer in ipairs(layers) do\
+		for y, row in ipairs(layer) do\
+			if not image[y] then\
+				image[y] = {}\
+			end\
+			for x, pixel in ipairs(row) do\
+				if not image[y][x] or pixel ~= colours.transparent then\
+					image[y][x] = pixel\
+				end\
+			end\
+		end\
+		for y, row in ipairs(layer.text) do\
+			if not image.text[y] then\
+				image.text[y] = {}\
+			end\
+			for x, pixel in ipairs(row) do\
+				if not image.text[y][x] or pixel ~= ' ' then\
+					image.text[y][x] = pixel\
+				end\
+			end\
+		end\
+		for y, row in ipairs(layer.textcol) do\
+			if not image.textcol[y] then\
+				image.textcol[y] = {}\
+			end\
+			for x, pixel in ipairs(row) do\
+				if not image.textcol[y][x] or layer.text[y][x] ~= ' ' then\
+					image.textcol[y][x] = pixel\
+				end\
+			end\
+		end\
+	end\
+\
+	return image, width, height\
+end\
+\
+local function getColourOf(hex)\
+	if hex == ' ' then\
+		return colours.transparent\
+	end\
+    local value = tonumber(hex, 16)\
+    if not value then return nil end\
+    value = math.pow(2,value)\
+    return value\
+end\
+\
+ReadNFP = function(self, lines)\
+	local image = {}\
+	local y = 1\
+	for y, line in ipairs(lines) do\
+		for x = 1, #line do\
+			if not image[x] then\
+				image[x] = {}\
+			end\
+			image[x][y] = getColourOf(line:sub(x,x))\
+		end\
+		line = file.readLine()\
+	end\
+	file.close()\
+ 	return image, #image, #image[1]\
+end\
+\
+ReadNFT = function(self, lines)\
+	local image = {\
+		text = {},\
+		textcol = {}\
+	}\
+	for num, sLine in ipairs(lines) do\
+        table.insert(image, num, {})\
+        table.insert(image.text, num, {})\
+        table.insert(image.textcol, num, {})\
+        local writeIndex = 1\
+        local bgNext, fgNext = false, false\
+        local currBG, currFG = nil,nil\
+        for i=1,#sLine do\
+                local nextChar = string.sub(sLine, i, i)\
+                if nextChar:byte() == 30 then\
+                        bgNext = true\
+                elseif nextChar:byte() == 31 then\
+                        fgNext = true\
+                elseif bgNext then\
+                        currBG = Drawing.GetColour(nextChar)\
+	                    if currBG == nil then\
+	                    	currBG = colours.transparent\
+	                    end\
+                        bgNext = false\
+                elseif fgNext then\
+                        currFG = Drawing.GetColour(nextChar)\
+	                    if currFG == nil or currFG == colours.transparent then\
+	                    	currFG = colours.white\
+	                    end\
+                        fgNext = false\
+                else\
+                        if nextChar ~= \" \" and currFG == nil then\
+                                currFG = colours.white\
+                        end\
+                        image[num][writeIndex] = currBG\
+                        image.textcol[num][writeIndex] = currFG\
+                        image.text[num][writeIndex] = nextChar\
+                        writeIndex = writeIndex + 1\
+                end\
+        end\
+    end\
+ 	return image, #image[1], #image\
+end",["CenterView.lua"]="Inherit = 'View'\
+\
+OnUpdate = function(self, value)\
+	if value == 'Children' or value == 'Width' then\
+		local y = 1\
+		for i, v in ipairs(self.Children) do\
+			v.Y = y\
+			y = y + v.Height\
+			v.X = math.floor((self.Width - v.Width) / 2) + 1\
+		end\
+		self.Height = y - 1\
+	end\
+end",["DividerView.lua"]="Inherit = 'View'\
+Char = nil\
+\
+OnDraw = function(self, x, y)\
+	if self.BackgroundColour then\
+		if self.Char then\
+			Drawing.DrawArea (x, y, self.Width, self.Height, self.Char, self.TextColour, self.BackgroundColour)\
+		else\
+			Drawing.DrawBlankArea(x, y, self.Width, self.Height, self.BackgroundColour)\
+		end\
+	end\
+end",["LinkView.lua"]="Inherit = 'View'\
+Height = 2\
+UnderlineColour = colours.blue\
+UnderlineVisible = true\
+\
+OnLoad = function(self)\
+	if self.Text and #self.Text > 0 then\
+		self:AddObject({\
+			Y = 1,\
+			X = 1,\
+			Width = self.Width,\
+			Align = self.Align,\
+			Type = \"Label\",\
+			Text = self.Text,\
+			TextColour = self.TextColour,\
+			BackgroundColour = self.BackgroundColour\
+		})\
+	end\
+end\
+\
+OnRecalculateStart = function(self)\
+	self:RemoveObject('UnderlineLabel')\
+end\
+\
+OnRecalculateEnd = function(self, currentY)\
+	if self.UnderlineVisible then\
+		local underline = ''\
+		local len = self.Width\
+		if self.Text then\
+			len = #self.Text\
+		end\
+\
+		for i = 1, len do\
+			underline = underline .. '-'\
+		end\
+		local col = self.UnderlineColour\
+		if self.UnderlineColour == nil then\
+			col = self.TextColour\
+		end\
+\
+		local ul = self:AddObject({\
+			Y = currentY,\
+			X = 1,\
+			Width = self.Width,\
+			Align = self.Align,\
+			Type = \"Label\",\
+			Name = \"UnderlineLabel\",\
+			Text = underline,\
+			TextColour = col,\
+			BackgroundColour = self.BackgroundColour\
+		})	\
+		return currentY + 1\
+	else\
+		return currentY\
+	end\
+end\
+\
+OnClick = function(self)\
+	self.Bedrock:GetObject('WebView'):GoToURL(self.URL)\
+end",["SelectView.lua"]="Inherit = 'Button'\
+MenuItems = nil\
+Children = {}\
+Selected = nil\
+\
+OnUpdate = function(self, value)\
+	if value == 'Height' and self.Height ~= 1 then\
+		self.Height = 1\
+	end\
+end\
+\
+Select = function(self, index)\
+	if self.MenuItems[index] then\
+		local text = self.MenuItems[index].Text\
+		for i = 1, self.Width - 3 - #text do\
+			text = text .. ' '\
+		end\
+		text = text .. 'V'\
+		self.Text = text\
+		self.Selected = index\
+	end\
+end\
+\
+OnInitialise = function(self)\
+	self:ClearMenuItems()\
+end\
+\
+ClearMenuItems = function(self)\
+	self.MenuItems = {}\
+end\
+\
+AddMenuItem = function(self, item)\
+	table.insert(self.MenuItems, item)\
+	if not self.Selected then\
+		if #self.MenuItems ~= 0 then\
+			self:Select(1)\
+		end\
+	end\
+end\
+\
+OnClick = function(self, event, side, x, y)\
+	if self:ToggleMenu({\
+		Type = \"Menu\",\
+		HideTop = true,\
+		Children = self.MenuItems\
+	}, x, 1) then\
+		for i, child in ipairs(self.Bedrock.Menu.Children) do\
+			child.OnClick = function(_self, event, side, x, y)\
+				self:Select(i)\
+			end\
+		end\
+	end\
+end",["WebView.lua"]="Inherit = 'ScrollView'\
+URL = nil\
+FakeURL = nil\
+LoadingURL = nil\
+Tree = nil\
+BackgroundColour = colours.white\
+ScriptEnvironment = nil\
+Timers = nil\
+Download = nil\
+\
+-- TODO: strip this down to remove positioning stuff\
+UpdateLayout = function(self)\
+	self:RemoveAllObjects()\
+	self.BackgroundColour = colours.white\
+	local body = self.Tree:GetElement('body')\
+\
+	--TODO: check that body exists, if not redirect to an error page\
+\
+	if body.BackgroundColour then\
+		self.BackgroundColour = body.BackgroundColour\
+	end\
+\
+	local node = true\
+	node = function(children, parentObject)\
+		local currentY = 1\
+		for i, v in ipairs(children) do\
+			local object = v:CreateObject(parentObject, currentY)\
+			if object then\
+				v.Object = object\
+				if v.Children and #v.Children > 0 and object.Children then\
+					local usedY = node(v.Children, object)\
+					if not v.Attributes.height then\
+						object.Height = usedY\
+					end\
+					object:OnUpdate('Children')\
+				end\
+				-- if not object.Height then\
+				-- 	for k, v in pairs(object) do\
+				-- 		error(v)\
+				-- 	end	\
+				-- 	error('Nope')\
+				-- end\
+				currentY = currentY + object.Height\
+			end\
+		end\
+		return currentY - 1\
+	end\
+	node(body.Children, self)\
+	\
+	self:RepositionLayout()\
+\
+	local head = self.Tree:GetElement('head')\
+	if head then\
+		for i, child in ipairs(head.Children) do\
+			if child.Tag == 'script' then\
+				child:InsertScript(self)\
+			end\
+		end\
+	end\
+end\
+\
+RepositionLayout = function(self)\
+	local node = true\
+	node = function(children, isFloat, parent)\
+		if parent.OnRecalculateStart then\
+			parent:OnRecalculateStart()\
+		end\
+\
+		local currentY = 1\
+		local currentX = 1\
+		local tallestChild = 1\
+		for i, child in ipairs(children) do\
+			if child.Type ~= 'ScrollBar' then\
+				if isFloat then\
+					if currentX ~= 1 and parent.Width - currentX + 1 < child.Width then\
+						currentX = 1\
+						currentY = currentY + tallestChild\
+						tallestChild = 1\
+					end\
+\
+					if parent.Align == \"Left\" then\
+						child.X = currentX\
+					elseif parent.Align == \"Right\" then\
+						child.X = parent.Width - currentX - child.Width + 2\
+					end\
+				end\
+				child.Y = currentY\
+\
+				if child.Children and #child.Children > 0 then\
+					local usedY = node(child.Children, child.IsFloat, child)\
+					child:OnUpdate('Children')\
+					if not child.Element.Attributes.height then\
+						child.Height = usedY\
+					end\
+				end\
+\
+				if child.Height > tallestChild then\
+					tallestChild = child.Height\
+				end\
+\
+				if isFloat then\
+					currentX = currentX + child.Width\
+				else\
+					currentY = currentY + child.Height\
+				end\
+			end\
+		end\
+		if isFloat then\
+			currentY = currentY + tallestChild\
+		end\
+		if parent.OnRecalculateEnd then\
+			currentY = parent:OnRecalculateEnd(currentY)\
+		end\
+		return currentY - 1\
+	end\
+	node(self.Children, self.IsFloat, self)\
+\
+	self:UpdateScroll()\
+end\
+\
+GoToURL = function(self, url, nonVerbose, noHistory, post)\
+	self.BackgroundColour = colours.white\
+	self:RemoveAllObjects()\
+	if self.OnPageLoadStart and not nonVerbose then\
+		self:OnPageLoadStart(url, noHistory)\
+	end\
+	self.LoadingURL = url\
+	self.FakeURL = url\
+	self:InitialiseScriptEnvironment()\
+\
+	if not http and url:find('http://') then\
+		if self.OnPageLoadFailed then\
+			self:OnPageLoadFailed(url, 4, noHistory)\
+		end\
+		return\
+	end\
+\
+	-- error(fs.getName(url))\
+	local parts = urlComponents(url)\
+	-- if url:sub(#url) ~= '/' and url:find('?') then\
+	-- 	fileName = fs.getName(url:sub(1, url:find('?') - 1))\
+	-- else\
+	-- 	fileName = fs.getName(url)\
+	-- end\
+\
+	local fileName = parts.filename\
+	local extension\
+	if fileName == '' or url:sub(#url) == '/' then\
+		extension = true\
+	else\
+		extension = fileName:match('%.[0-9a-z%?%%]+$')\
+		if extension then\
+			extension = extension:sub(2)\
+		end\
+	end\
+\
+	if not url:find('quest://download.ccml') and not url:find('quest://downloaded.ccml') then\
+		self.Download = nil\
+	else\
+		extension = true\
+	end\
+\
+	-- TODO: 404s are counted as downloads\
+\
+	if not extension or (extension ~= true and extension ~= '' and extension ~= 'ccml' and extension ~= 'html' and extension ~= 'php' and extension ~= 'asp' and extension ~= 'aspx' and extension ~= 'jsp' and extension ~= 'qst' and extension ~= 'com' and extension ~= 'me' and extension ~= 'net' and extension ~= 'info' and extension ~= 'au' and extension ~= 'nz') then\
+		local downloadsFolder = '/Downloads/'\
+		if OneOS then\
+			downloadsFolder = '/Desktop/Documents/Downloads/'\
+		end\
+		if not fs.exists(downloadsFolder) then\
+			fs.makeDir(downloadsFolder)\
+		end\
+\
+		local downloadPath = downloadsFolder..fileName\
+		local i = 1\
+		while fs.exists(downloadPath) do\
+			i = i + 1\
+			downloadPath = downloadsFolder..fileName .. ' (' .. i .. ')'\
+		end\
+\
+		self.Download = url\
+		fetchHTTPAsync(url, function(ok, event, response)\
+			if self.Download == url then\
+				self.Download = nil\
+				if ok then\
+					if response.getResponseCode then\
+						local code = response.getResponseCode()\
+						if code ~= 200 then\
+							self:OnPageLoadFailed(url, 6, noHistory)\
+							response.close()\
+							return\
+						end\
+					end\
+					local f = fs.open(downloadPath, 'w')\
+					if f then\
+						f.write(response.readAll())\
+						f.close()\
+						self:GoToURL('quest://downloaded.ccml?path='..textutils.urlEncode(downloadPath), true, true)\
+					else\
+						self:OnPageLoadFailed(url, 6, noHistory)\
+					end\
+					response.close()\
+				else\
+					self:OnPageLoadFailed(url, 6, noHistory)\
+				end\
+			end\
+		end)\
+\
+		self:GoToURL('quest://download.ccml?path='..textutils.urlEncode(downloadPath), true, true)\
+		self:OnPageLoadEnd(url, noHistory)\
+	else\
+		fetchHTTPAsync(url, function(ok, event, response)\
+			self.LoadingURL = nil\
+			if ok then\
+				if response.getResponseCode then\
+					local code = response.getResponseCode()\
+					if code ~= 200 then\
+						if self.OnPageLoadFailed then\
+							self:OnPageLoadFailed(url, code, noHistory)\
+						end\
+						response.close()\
+						return\
+					end\
+				end\
+\
+				self.Tree, err = ElementTree:Initialise(response.readAll())\
+				response.close()\
+				if not err then\
+					self.URL = url\
+					self:UpdateLayout()\
+					if self.OnPageLoadEnd and not nonVerbose then\
+						self:OnPageLoadEnd(url, noHistory)\
+					end\
+				else\
+					if self.OnPageLoadFailed then\
+						self:OnPageLoadFailed(url, err, noHistory)\
+					end\
+				end\
+			elseif self.OnPageLoadFailed and not nonVerbose then\
+				self:OnPageLoadFailed(url, event, noHistory)\
+			end\
+		end, post)\
+	end\
+end\
+\
+Stop = function(self)\
+	cancelHTTPAsync(self.LoadingURL)\
+	if self.OnPageLoadFailed then\
+		self:OnPageLoadFailed(url, Errors.TimeoutStop)\
+	end\
+end\
+\
+ResolveElements = function(self, selector)\
+	local elements = {}\
+	local node = true\
+	local isClass = false\
+	if selector:sub(1,1) == '.' then\
+		isClass = true\
+	end\
+\
+	node = function(tbl)\
+		for i,v in ipairs(tbl) do\
+			if type(v) == 'table' and v.Tag then\
+				if not isClass and v.Tag:lower() == selector:lower() then\
+					table.insert(elements, v.Object)\
+				elseif isClass and v.Attributes.class and v.Attributes.class:lower() == selector:lower():sub(2) then\
+					table.insert(elements, v.Object)\
+				end\
+				if v.Children then\
+					local r = node(v.Children)\
+				end\
+			end\
+		end\
+	end\
+	node(self.Tree.Tree)\
+	return elements\
+end\
+\
+InitialiseScriptEnvironment = function(self)\
+	lQuery.webView = self\
+	if self.Timers then\
+		for i, timer in ipairs(self.Timers) do\
+			-- error('clear '..timer)\
+			self.Bedrock.Timers[timer] = nil\
+		end\
+	end\
+	self.Timers = {}\
+\
+	local getValues = urlComponents(self.LoadingURL).get\
+\
+	self.ScriptEnvironment = {\
+		keys = keys,\
+		printError = printError, -- maybe don't have this\
+		assert = assert,\
+		getfenv = getfenv,\
+		bit = bit,\
+		rawset = rawset,\
+		tonumber = tonumber,\
+		loadstring = loadstring,\
+		error = error, -- maybe don't have this\
+		tostring = tostring,\
+		type = type,\
+		coroutine = coroutine,\
+		next = next,\
+		unpack = unpack,\
+		colours = colours,\
+		pcall = pcall,\
+		math = math,\
+		pairs = pairs,\
+		rawget = rawget,\
+		_G = _G,\
+		__inext = __inext,\
+		read = read,\
+		ipairs = ipairs,\
+		xpcall = xpcall,\
+		rawequal = rawequal,\
+		setfenv = setfenv,\
+		http = http, --create an ajax thing to replace this\
+		string = string,\
+		setmetatable = setmetatable,\
+		getmetatable = getmetatable,\
+		table = table,\
+		parallel = parallel, -- this mightn't work properly\
+		textutils = textutils,\
+		colors = colors,\
+		vector = vector,\
+		select = select,\
+		os = {\
+			version = os.version,\
+			getComputerID = os.getComputerID,\
+			getComputerLabel = os.getComputerLabel,\
+			clock = os.clock,\
+			time = os.time,\
+			day = os.day,\
+		},\
+		lQuery = lQuery.fn,\
+		l = lQuery.fn,\
+		setTimeout = function(func, delay)\
+			if type(func) == 'function' and type(delay) == 'number' then\
+				local t = self.Bedrock:StartTimer(func, delay)\
+				table.insert(self.Timers, t)\
+				return t\
+			end\
+		end,\
+		setInterval = function(func, interval)\
+			if type(func) == 'function' and type(interval) == 'number' then\
+				local t = self.Bedrock:StartRepeatingTimer(function(timer)\
+					table.insert(self.Timers, timer)\
+					func()\
+				end, interval)\
+				table.insert(self.Timers, t)\
+				return t\
+			end\
+		end,\
+		clearTimeout = function(timer)\
+			self.Bedrock.Timers[timer] = nil\
+		end,\
+		clearInterval = function(timer)\
+			self.Bedrock.Timers[timer] = nil\
+		end,\
+		window = {\
+			location = self.URL,\
+			realLocation = self.LoadingURL,\
+			get = getValues,\
+			version = QuestVersion\
+		}\
+	}\
+end\
+\
+LoadScript = function(self, script)\
+	local fn, err = loadstring(script, 'Script Tag Error: '..self.URL)\
+	if fn then\
+		setfenv(fn, self.ScriptEnvironment)\
+		fn()\
+	else\
+		local start = err:find(': ')\
+		self:OnPageLoadFailed(url, err:sub(start + 2), noHistory)\
+	end\
+end\
+\
+RemoveElement = function(self, elem)\
+	local elements = {}\
+	local node = true\
+	node = function(tbl)\
+		for i,v in ipairs(tbl) do\
+			if type(v) == 'table' then\
+				if v == elem.Element then\
+					elem.Parent:RemoveObject(elem)\
+					v = nil\
+					return\
+				end\
+				if v.Children then\
+					local r = node(v.Children)\
+				end\
+			end\
+		end\
+	end\
+	node(self.Tree.Tree)\
+end",["FloatView.lua"]="Inherit = 'View'\
+IsFloat = true\
+Align = \"Left\"",["FormView.lua"]="Inherit = 'View'\
+\
+OnTab = function(self)\
+	local active = self.Bedrock:GetActiveObject()\
+	local selected = nil\
+	local selectNext = false\
+	local function node(tree)\
+		for i, v in ipairs(tree) do\
+			if selectNext then\
+				if v.Type == 'TextBox' or v.Type == 'SecureTextBox' then\
+					selected = v\
+					return\
+				end\
+			elseif v == active then\
+				selectNext = true\
+			end\
+			if v.Children then\
+				node(v.Children)\
+			end\
+		end\
+	end\
+	node(self.Children)\
+\
+	if selected then\
+		self.Bedrock:SetActiveObject(selected)\
+	end\
+end",},["Views"]={["main.view"]="{\
+  [\"Children\"]={\
+    [1]={\
+      [\"Y\"]=1,\
+      [\"X\"]=1,\
+      [\"Name\"]=\"Toolbar\",\
+      [\"Type\"]=\"View\",\
+      [\"InheritView\"]=\"toolbar\"\
+    },\
+    [2]={\
+      [\"Y\"]=4,\
+      [\"X\"]=1,\
+      [\"Height\"]=\"100%,-3\",\
+      [\"Width\"]=\"100%\",\
+      [\"Name\"]=\"WebView\",\
+      [\"Type\"]=\"WebView\"\
+    },\
+    [3]={\
+      [\"Y\"]=1,\
+      [\"X\"]=1,\
+      [\"Height\"]=1,\
+      [\"Width\"]=\"100%\",\
+      [\"Name\"]=\"PageTitleLabel\",\
+      [\"Type\"]=\"Label\",\
+      [\"Align\"]=\"Center\",\
+      [\"TextColour\"]=128,\
+    },\
+  },\
+  [\"BackgroundColour\"]=1,\
+  [\"ToolBarColour\"]=256,\
+  [\"ToolBarTextColour\"]=1\
+}",["optionsmenu.view"]="{\
+  [\"Type\"]=\"Menu\",\
+  [\"Owner\"]=\"OptionsButton\",\
+  [\"Children\"]={\
+    [1]={\
+      [\"Name\"]=\"StopMenuItem\",\
+      [\"Type\"]=\"Button\",\
+      [\"Text\"]=\"Stop\"\
+    },\
+    [2]={\
+      [\"Name\"]=\"ReloadMenuItem\",\
+      [\"Type\"]=\"Button\",\
+      [\"Text\"]=\"Reload\"\
+    },\
+    [3]={\
+      [\"Name\"]=\"GoHomeMenuItem\",\
+      [\"Type\"]=\"Button\",\
+      [\"Text\"]=\"Go Home\"\
+    },\
+    [4]={\
+      [\"Name\"]=\"SetHomeMenuItem\",\
+      [\"Type\"]=\"Button\",\
+      [\"Text\"]=\"Set Home\"\
+    },\
+    [5]={\
+      [\"Name\"]=\"Separator\",\
+      [\"Type\"]=\"Separator\"\
+    },\
+    [6]={\
+      [\"Name\"]=\"QuitMenuItem\",\
+      [\"Type\"]=\"Button\",\
+      [\"Text\"]=\"Quit\"\
+    }\
+  },\
+}",["toolbar.view"]="{\
+  [\"Width\"]=\"100%\",\
+  [\"Height\"]=3,\
+  [\"Type\"]=\"View\",\
+  [\"BackgroundColour\"]=256,\
+  [\"Children\"]={\
+    [1]={\
+      [\"Y\"]=2,\
+      [\"X\"]=2,\
+      [\"Name\"]=\"BackButton\",\
+      [\"Type\"]=\"Button\",\
+      [\"Enabled\"]=false,\
+      [\"TextColour\"]=128,\
+      [\"Text\"]=\"<\",\
+      [\"BackgroundColour\"]=1\
+    },\
+    [2]={\
+      [\"Y\"]=2,\
+      [\"X\"]=6,\
+      [\"Name\"]=\"ForwardButton\",\
+      [\"Type\"]=\"Button\",\
+      [\"Enabled\"]=false,\
+      [\"TextColour\"]=128,\
+      [\"Text\"]=\">\",\
+      [\"BackgroundColour\"]=1\
+    },\
+    [3]={\
+      [\"Y\"]=2,\
+      [\"X\"]=10,\
+      [\"Width\"]=\"100%,-14\",\
+      [\"Type\"]=\"View\",\
+      [\"BackgroundColour\"]=1\
+    },\
+    [4]={\
+      [\"Y\"]=2,\
+      [\"X\"]=10,\
+      [\"Width\"]=\"100%,-14\",\
+      [\"Name\"]=\"URLTextBox\",\
+      [\"Type\"]=\"TextBox\",\
+      [\"TextColour\"]=128,\
+      [\"Placeholder\"]=\"Website URL...\",\
+      [\"PlaceholderTextColour\"]=256,\
+      [\"BackgroundColour\"]=0,\
+      [\"SelectOnClick\"]=true\
+    },\
+    [5]={\
+      [\"Y\"]=2,\
+      [\"X\"]=10,\
+      [\"Width\"]=\"100%,-14\",\
+      [\"Name\"]=\"LoadingLabel\",\
+      [\"Type\"]=\"Label\",\
+      [\"TextColour\"]=256,\
+      [\"Text\"]=\"Loading...\",\
+      [\"BackgroundColour\"]=1,\
+      [\"Align\"]=\"Center\",\
+      [\"Visible\"]=false\
+    },\
+    [6]={\
+      [\"Y\"]=2,\
+      [\"X\"]=\"100%,-3\",\
+      [\"Name\"]=\"OptionsButton\",\
+      [\"Type\"]=\"Button\",\
+      [\"Text\"]=\"V\",\
+      [\"TextColour\"]=128,\
+      [\"BackgroundColour\"]=1\
+    },\
+  },\
+}",},}
 
 local function run(tArgs)
 
