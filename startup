@@ -308,6 +308,12 @@ local function resolveQuestHostUrl(url)
 	if tld == 'qst' and #hostParts == 2 then
 		return questHost .. hostParts[1] .. components.filepath
 	end
+	if tld == 'tar' and #hostParts == 2 then
+		return "http://65.26.252.225/quest/tar/" .. hostParts[1] .. components.filepath
+	end
+	if tld == 'dia' and #hostParts == 2 then
+		return "http://65.26.252.225/quest/dia/" .. hostParts[1] .. components.filepath
+	end
 	return url
 end
 
