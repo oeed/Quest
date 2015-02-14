@@ -162,7 +162,7 @@ GoToURL = function(self, url, nonVerbose, noHistory, post)
 
 	-- TODO: 404s are counted as downloads
 
-	if not extension or (extension ~= true and extension ~= '' and extension ~= 'ccml' and extension ~= 'html' and extension ~= 'php' and extension ~= 'asp' and extension ~= 'aspx' and extension ~= 'jsp' and extension ~= 'qst' and extension ~= 'com' and extension ~= 'me' and extension ~= 'net' and extension ~= 'info' and extension ~= 'au' and extension ~= 'nz') then
+	if not extension or (extension ~= true and extension ~= '' and extension ~= 'ccml' and extension ~= 'html' and extension ~= 'php' and extension ~= 'asp' and extension ~= 'aspx' and extension ~= 'jsp' and extension ~= 'qst' and extension ~= 'tar' and extension ~= 'dia' and extension ~= 'com' and extension ~= 'me' and extension ~= 'net' and extension ~= 'info' and extension ~= 'au' and extension ~= 'nz') then
 		local downloadsFolder = '/Downloads/'
 		if OneOS then
 			downloadsFolder = '/Desktop/Documents/Downloads/'
